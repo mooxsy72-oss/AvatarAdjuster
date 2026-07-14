@@ -257,3 +257,7 @@
         font-size: 18px !important;
     }
 }
+.mes > .aa-edit-btn {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
