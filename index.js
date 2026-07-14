@@ -297,7 +297,7 @@ function ensureEditButton(avatarEl) {
     btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
         e.preventDefault();
         const img = avatarEl.querySelector(':scope > img');
@@ -316,6 +316,8 @@ function processChatAvatars() {
 
 // ---- Панель ----
 let currentPanel = null;
+let panelOpenedAt = 0;
+
 
 function closePanel() {
     if (currentPanel) {
@@ -327,10 +329,12 @@ function closePanel() {
 }
 
 function onOutsideClick(e) {
+    if (Date.now() - panelOpenedAt < 400) return;
     if (currentPanel && !currentPanel.contains(e.target) && !e.target.closest('.aa-edit-btn')) {
         closePanel();
     }
 }
+
 
 
 function makeSliderRow(labelText, prop, state) {
@@ -499,10 +503,10 @@ async function openPanel(img, anchorBtn, avatarEl) {
     closeBtn.addEventListener('click', closePanel);
     doneBtn.addEventListener('click', closePanel);
 
-    setTimeout(() => {
-        document.addEventListener('mousedown', onOutsideClick);
-        document.addEventListener('touchstart', onOutsideClick, { passive: true });
-    }, 150);
+    panelOpenedAt = Date.now();
+    document.addEventListener('mousedown', onOutsideClick);
+    document.addEventListener('touchstart', onOutsideClick, { passive: true });
+
 }
 
 function initObserver() {
