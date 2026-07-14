@@ -1,0 +1,238 @@
+/* ============ Иконка-шестерёнка ============ */
+.mes > .aa-edit-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: transparent;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.001;
+    transition: opacity 0.18s ease;
+    z-index: 99999 !important;
+    pointer-events: auto;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
+.mes > .aa-edit-btn::before {
+    content: "";
+    position: absolute;
+    top: -25px;
+    left: -25px;
+    right: -25px;
+    bottom: -25px;
+    background: transparent;
+    border-radius: 50%;
+    z-index: -1;
+}
+
+.mes > .aa-edit-btn:hover {
+    opacity: 1;
+    color: var(--SmartThemeQuoteColor, #ffb86c);
+}
+
+/* ============ Оверлей с оригиналом ============ */
+.mes .avatar.aa-has-original {
+    overflow: hidden !important;
+    position: relative !important;
+}
+
+/* Скрываем оригинальный img, но сохраняем его в потоке для размеров */
+.mes .avatar.aa-has-original > img {
+    visibility: hidden;
+}
+
+/* Тёмный фон под слоем, чтобы пустые поля по бокам (от contain)
+   не выглядели дырами, а смотрелись как рамка */
+.mes .avatar.aa-has-original {
+    background-color: #1a1a1a;
+}
+
+
+/* Наш слой с оригиналом — показываем картинку ЦЕЛИКОМ (contain),
+   чтобы ползунки двигали полное изображение, а не обрезанный кусок */
+.mes .avatar > .aa-original-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: contain;
+    transform-origin: center center;
+    transform:
+        translate(var(--aa-x, 0px), var(--aa-y, 0px))
+        rotate(var(--aa-rotate, 0deg))
+        scale(var(--aa-scale, 1));
+    transition: transform 0.15s ease;
+    pointer-events: none;
+    z-index: 1;
+}
+
+
+
+
+/* Иконка и галерея — над оверлеем */
+.mes .avatar .aa-edit-btn,
+.mes .avatar .ag-ov {
+    z-index: 2;
+}
+
+
+/* ============ Панель редактирования ============ */
+.aa-panel {
+    position: fixed;
+    z-index: 10000;
+    background: var(--SmartThemeBlurTintColor, #1a1a1a);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    border-radius: 10px;
+    padding: 14px;
+    min-width: 280px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    color: var(--SmartThemeBodyColor, #eee);
+    font-family: var(--mainFontFamily, sans-serif);
+    font-size: 13px;
+    user-select: none;
+    animation: aa-fade-in 0.18s ease;
+}
+
+@keyframes aa-fade-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.aa-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+    font-weight: bold;
+    font-size: 13px;
+    gap: 8px;
+}
+
+.aa-panel-title {
+    color: var(--SmartThemeQuoteColor, #ffb86c);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.aa-panel-close {
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+    flex-shrink: 0;
+}
+
+.aa-panel-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.aa-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.aa-row label {
+    flex: 0 0 70px;
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+.aa-row input[type="range"] {
+    flex: 1;
+    accent-color: var(--SmartThemeQuoteColor, #ffb86c);
+    cursor: pointer;
+}
+
+.aa-row .aa-value {
+    flex: 0 0 50px;
+    text-align: right;
+    font-size: 12px;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+
+.aa-panel-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.aa-btn {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    background: transparent;
+    color: var(--SmartThemeBodyColor, #eee);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+
+.aa-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--SmartThemeQuoteColor, #ffb86c);
+}
+
+.aa-btn.aa-btn-reset:hover {
+    background: rgba(255, 100, 100, 0.15);
+    border-color: #ff6464;
+}
+/* ── Мобильная адаптация панели ── */
+@media (max-width: 768px) {
+    .aa-panel {
+        /* Панель по центру внизу экрана, во всю ширину */
+        left: 50% !important;
+        top: auto !important;
+        bottom: 10px !important;
+        transform: translateX(-50%) !important;
+        width: calc(100vw - 20px) !important;
+        min-width: 0 !important;
+        max-width: 420px !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Крупнее ползунки — удобнее пальцем */
+    .aa-row input[type="range"] {
+        height: 26px !important;
+    }
+
+    /* Крупнее кнопки Сбросить/Готово */
+    .aa-btn {
+        padding: 10px 12px !important;
+        font-size: 14px !important;
+    }
+
+    /* Шестерёнка на мобилке — крупнее и всегда чуть видна (нет hover) */
+    .mes > .aa-edit-btn {
+        width: 22px !important;
+        height: 22px !important;
+        font-size: 15px !important;
+        opacity: 0.55 !important;
+    }
+    .mes > .aa-edit-btn:hover,
+    .mes > .aa-edit-btn:active {
+        opacity: 1 !important;
+    }
+}

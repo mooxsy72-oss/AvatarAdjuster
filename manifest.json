@@ -1,0 +1,12 @@
+{
+    "display_name": "Avatar Adjuster",
+    "loading_order": 10,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Nell",
+    "version": "1.0.0",
+    "homePage": "",
+    "auto_update": false
+}
