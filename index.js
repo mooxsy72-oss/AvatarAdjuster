@@ -1,551 +1,653 @@
-import { extension_settings } from '../../../extensions.js';
-import { saveSettingsDebounced } from '../../../../script.js';
+// ===== Avatar Gallery =====
+// Галерея аватарок прямо в SillyTavern. На аватарках (персоны, персонаж, аватары
+// в сообщениях, список персонажей) — значок 🖼. Клик → набор картинок для ЭТОЙ
+// аватарки; выбор реально заменяет аватарку персоны/персонажа в таверне (везде).
+// В меню-палочке — «Менеджер аватарок» со всеми сохранёнными. Хранение: IndexedDB
+// (без раздувания settings.json). Дизайн адаптируется под тему ST.
+(async function () {
+    'use strict';
 
-const MODULE_NAME = 'AvatarAdjuster';
-const DEBUG = true;
+    let _ext, _script, _personas, _power;
+    try { _ext      = await import('../../../extensions.js'); } catch {}
+    try { _script   = await import('../../../../script.js');  } catch {}
+    try { _personas = await import('../../../personas.js');   } catch {}
+    try { _power    = await import('../../../power-user.js'); } catch {}
 
-const log = (...args) => { if (DEBUG) console.log(`[${MODULE_NAME}]`, ...args); };
+    const MY_KEY = 'avatar-gallery';
+    const STORE_MAX = 1024;   // макс. сторона картинки в пикселях
+    const THUMB_MAX = 128;    // макс. сторона мини-превью для ленты
+    const MAX_IMAGES = 60;    // макс. число картинок в одной галерее
 
-const RANGES = {
-    scale:  { min: 20,   max: 800, step: 1 },
-    x:      { min: -600, max: 600, step: 1 },
-    y:      { min: -600, max: 600, step: 1 },
-    rotate: { min: -180, max: 180, step: 1 },
-};
-
-
-const DEFAULTS = {
-    scale: 200,
-    x: 0,
-    y: 0,
-    rotate: 0,
-};
-
-
-// Кэш URL оригиналов: key -> URL или null
-const originalUrlCache = new Map();
-// In-flight запросы, чтобы не дёргать один и тот же URL параллельно
-const pendingLookups = new Map();
-// Кэш натуральных размеров картинок: url -> {w, h}
-const imageSizeCache = new Map();
-
-
-function initSettings() {
-    if (!extension_settings[MODULE_NAME]) {
-        extension_settings[MODULE_NAME] = { avatars: {} };
+    // ── Настройки ───────────────────────────────────────────────────────────
+    function ctx() { try { return window.SillyTavern?.getContext?.() ?? null; } catch { return null; } }
+    function settings() {
+        const s = ctx()?.extensionSettings ?? _ext?.extension_settings ?? (window.extension_settings ??= {});
+        if (!s[MY_KEY] || typeof s[MY_KEY] !== 'object') s[MY_KEY] = {};
+        const m = s[MY_KEY];
+        if (typeof m.enabled !== 'boolean') m.enabled = true;
+        if (typeof m.onMessages !== 'boolean') m.onMessages = true;
+        return m;
     }
-    if (!extension_settings[MODULE_NAME].avatars) {
-        extension_settings[MODULE_NAME].avatars = {};
-    }
-}
+    function save() { try { ctx()?.saveSettingsDebounced?.(); } catch { _ext?.saveSettingsDebounced?.(); } }
+    const isEnabled = () => settings().enabled !== false;
+    const characters = () => ctx()?.characters ?? _script?.characters ?? [];
 
-function getAvatarKey(imgSrc) {
-    if (!imgSrc) return null;
-    try {
-        const url = new URL(imgSrc, window.location.origin);
-        const type = url.searchParams.get('type');
-        const file = url.searchParams.get('file');
-        if (type && file) {
-            return `${type}:${decodeURIComponent(file)}`;
-        }
-        const parts = imgSrc.split('/');
-        return `raw:${parts[parts.length - 1]}`;
-    } catch (e) {
+    // ── IndexedDB ───────────────────────────────────────────────────────────
+    const DB_NAME = 'avatar_gallery_db', DB_STORE = 'galleries';
+    let _dbPromise = null;
+    function db() {
+        if (_dbPromise) return _dbPromise;
+        _dbPromise = new Promise((res, rej) => {
+            const req = indexedDB.open(DB_NAME, 1);
+            req.onupgradeneeded = () => { req.result.createObjectStore(DB_STORE, { keyPath: 'key' }); };
+            req.onsuccess = () => res(req.result);
+            req.onerror = () => rej(req.error);
+        });
+        return _dbPromise;
+    }
+    async function idbGet(key) {
+        const d = await db();
+        return new Promise((res) => { const r = d.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(key); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); });
+    }
+    async function idbSet(record) {
+        const d = await db();
+        return new Promise((res) => { const tx = d.transaction(DB_STORE, 'readwrite'); tx.objectStore(DB_STORE).put(record); tx.oncomplete = () => res(true); tx.onerror = () => res(false); });
+    }
+    async function idbGetAll() {
+        const d = await db();
+        return new Promise((res) => { const r = d.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]); });
+    }
+    async function idbDel(key) {
+        const d = await db();
+        return new Promise((res) => { const tx = d.transaction(DB_STORE, 'readwrite'); tx.objectStore(DB_STORE).delete(key); tx.oncomplete = () => res(true); tx.onerror = () => res(false); });
+    }
+
+    // ── Картинки ────────────────────────────────────────────────────────────
+    function loadImage(src) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('img')); i.src = src; }); }
+    async function downscale(dataUrl, max = STORE_MAX) {
+        try {
+            const img = await loadImage(dataUrl);
+            let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+            if (!w || !h) return dataUrl;
+            const scale = Math.min(1, max / Math.max(w, h));
+            if (scale >= 1) return dataUrl;
+            const cv = document.createElement('canvas');
+            cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
+            cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+            // PNG/WebP/GIF могут иметь прозрачность — не перекодируем в JPEG; фото (JPEG) жмём в JPEG.
+            const srcMime = (dataUrl.match(/^data:([^;,]+)/) || [, ''])[1].toLowerCase();
+            const keepPng = srcMime !== 'image/jpeg' && srcMime !== 'image/jpg';
+            return keepPng ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', 0.9);
+        } catch { return dataUrl; }
+    }
+    function fileToDataUrl(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result || '')); r.onerror = () => rej(r.error); r.readAsDataURL(file); }); }
+    async function urlToDataUrl(url) {
+        try {
+            const r = await fetch(url, { cache: 'no-cache' });
+            if (!r.ok) return null;
+            const blob = await r.blob();
+            return await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result || '')); fr.onerror = () => res(null); fr.readAsDataURL(blob); });
+        } catch { return null; }
+    }
+    function dataUrlToBlob(dataUrl) {
+        const [h, d] = dataUrl.split(',');
+        const mime = (h.match(/:(.*?);/) || [, 'image/png'])[1];
+        const bin = atob(d); const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return new Blob([arr], { type: mime });
+    }
+
+    // ── ST helpers ──────────────────────────────────────────────────────────
+    function headers() {
+        try { const h = (_script?.getRequestHeaders?.({ omitContentType: true })) ?? ctx()?.getRequestHeaders?.() ?? {}; delete h['Content-Type']; return h; } catch { return {}; }
+    }
+    function thumb(type, id) { try { if (_script?.getThumbnailUrl) return _script.getThumbnailUrl(type, id); } catch {} return `/thumbnail?type=${type}&file=${encodeURIComponent(id)}`; }
+    function bustImages(type, id) {
+        if (!id) return;
+        const kind = type === 'persona' ? 'persona' : 'char';
+        document.querySelectorAll('img').forEach(img => {
+            const src = img.getAttribute('src') || '';
+            const parsed = parseAvatarFromSrc(src);
+            if (!parsed || parsed.kind !== kind || parsed.id !== id) return;
+            const base = src.split('#')[0].split('?')[0];
+            let q = (src.split('?')[1] || '').split('#')[0];
+            q = q.split('&').filter(p => p && !p.startsWith('_agb=')).join('&');
+            img.src = base + '?' + (q ? q + '&' : '') + '_agb=' + Date.now();
+        });
+    }
+
+    // ── Сущности ────────────────────────────────────────────────────────────
+    function personaEntity(avatarId, name) {
+        if (!avatarId) return null;
+        let nm = name;
+        try { if (!nm && _power?.power_user?.personas) nm = _power.power_user.personas[avatarId]; } catch {}
+        return { type: 'persona', id: avatarId, key: 'persona:' + avatarId, name: nm || avatarId, currentSrc: thumb('persona', avatarId), fullSrc: '/User Avatars/' + encodeURIComponent(avatarId) };
+    }
+    function charEntityFor(avatarKey, name) {
+        if (!avatarKey) return null;
+        return { type: 'char', id: avatarKey, key: 'char:' + avatarKey, name: name || avatarKey, currentSrc: thumb('avatar', avatarKey), fullSrc: '/characters/' + encodeURIComponent(avatarKey) };
+    }
+    function charEntity() {
+        const c = ctx();
+        const idx = c?.characterId ?? _script?.this_chid ?? -1;
+        const char = characters()?.[idx];
+        return char?.avatar ? charEntityFor(char.avatar, char.name) : null;
+    }
+    function entityFromKey(key) {
+        if (typeof key !== 'string') return null;
+        if (key.startsWith('persona:')) return personaEntity(key.slice(8));
+        if (key.startsWith('char:')) { const av = key.slice(5); const ch = characters()?.find?.(x => x?.avatar === av); return charEntityFor(av, ch?.name); }
         return null;
     }
-}
-
-function getAvatarSettings(key) {
-    if (!key) return { ...DEFAULTS };
-    const saved = extension_settings[MODULE_NAME].avatars[key];
-    return { ...DEFAULTS, ...(saved || {}) };
-}
-
-function saveAvatarSettings(key, settings) {
-    if (!key) return;
-    const isDefault = Object.keys(DEFAULTS).every(k => settings[k] === DEFAULTS[k]);
-    if (isDefault) {
-        delete extension_settings[MODULE_NAME].avatars[key];
-    } else {
-        extension_settings[MODULE_NAME].avatars[key] = { ...settings };
-    }
-    saveSettingsDebounced();
-}
-
-// Возможные пути к оригиналу
-function getCandidateUrls(type, file) {
-    const encoded = encodeURIComponent(file);
-    if (type === 'avatar') {
-        return [
-            `/characters/${encoded}`,
-            `/User%20Avatars/${encoded}`,
-        ];
-    }
-    if (type === 'persona') {
-        return [
-            `/User%20Avatars/${encoded}`,
-            `/user/avatars/${encoded}`,
-            `/characters/${encoded}`,
-        ];
-    }
-    return [];
-}
-
-// Проверка URL через реальную загрузку + запоминаем натуральные размеры
-function checkImageLoads(url) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        const timeout = setTimeout(() => resolve(false), 5000);
-        img.onload = () => {
-            clearTimeout(timeout);
-            imageSizeCache.set(url, { w: img.naturalWidth, h: img.naturalHeight });
-            resolve(true);
-        };
-        img.onerror = () => { clearTimeout(timeout); resolve(false); };
-        img.src = url;
-    });
-}
-
-// Гарантированно получить размеры картинки (из кэша или загрузить)
-function getImageSize(url) {
-    return new Promise((resolve) => {
-        if (imageSizeCache.has(url)) {
-            resolve(imageSizeCache.get(url));
-            return;
-        }
-        const img = new Image();
-        const timeout = setTimeout(() => resolve(null), 5000);
-        img.onload = () => {
-            clearTimeout(timeout);
-            const size = { w: img.naturalWidth, h: img.naturalHeight };
-            imageSizeCache.set(url, size);
-            resolve(size);
-        };
-        img.onerror = () => { clearTimeout(timeout); resolve(null); };
-        img.src = url;
-    });
-}
-
-
-async function findWorkingOriginalUrl(key) {
-    if (originalUrlCache.has(key)) return originalUrlCache.get(key);
-    if (pendingLookups.has(key)) return pendingLookups.get(key);
-
-    const promise = (async () => {
-        const [type, file] = key.split(':');
-        if (!type || !file) {
-            originalUrlCache.set(key, null);
-            return null;
-        }
-        const candidates = getCandidateUrls(type, file);
-        log(`Searching original for "${key}". Candidates:`, candidates);
-        for (const url of candidates) {
-            const ok = await checkImageLoads(url);
-            log(`  → ${url} : ${ok ? '✅ OK' : '❌ fail'}`);
-            if (ok) {
-                originalUrlCache.set(key, url);
-                pendingLookups.delete(key);
-                return url;
-            }
-        }
-        log(`  ⚠ No working original for "${key}", will use thumbnail`);
-        originalUrlCache.set(key, null);
-        pendingLookups.delete(key);
+    function parseAvatarFromSrc(src) {
+        try {
+            const u = new URL(src, location.href);
+            const type = u.searchParams.get('type'), file = u.searchParams.get('file');
+            if (type === 'persona' && file) return { kind: 'persona', id: decodeURIComponent(file) };
+            if (type === 'avatar' && file) return { kind: 'char', id: decodeURIComponent(file) };
+            const p = decodeURIComponent(u.pathname); let m;
+            if ((m = p.match(/\/User Avatars\/(.+)$/))) return { kind: 'persona', id: m[1] };
+            if ((m = p.match(/\/characters\/(.+)$/))) return { kind: 'char', id: m[1] };
+        } catch {}
         return null;
-    })();
-
-    pendingLookups.set(key, promise);
-    return promise;
-}
-
-// Гарантируем наличие слоя-оверлея
-function ensureOverlayLayer(avatarEl) {
-    let layer = avatarEl.querySelector(':scope > .aa-original-layer');
-    if (!layer) {
-        layer = document.createElement('div');
-        layer.className = 'aa-original-layer';
-        avatarEl.appendChild(layer);
     }
-    return layer;
-}
-
-function removeOverlayLayer(avatarEl) {
-    const layer = avatarEl.querySelector(':scope > .aa-original-layer');
-    if (layer) layer.remove();
-    avatarEl.classList.remove('aa-has-original');
-}
-
-// Вычисляет минимальный масштаб (cover) и максимальный сдвиг,
-// чтобы картинка не уезжала за границы контейнера.
-// contMode = 'contain' (как у нас в CSS: background-size: contain)
-function computeBounds(contW, contH, imgW, imgH) {
-    if (!contW || !contH || !imgW || !imgH) {
-        return { minScale: 1, maxX: 300, maxY: 300 };
+    function entityFromMessage(mes) {
+        if (!mes) return null;
+        const isUser = mes.getAttribute('is_user') === 'true';
+        const img = mes.querySelector('.mesAvatarWrapper .avatar img, .avatar img');
+        const parsed = parseAvatarFromSrc(img?.getAttribute('src') || '');
+        if (parsed?.kind === 'persona') return personaEntity(parsed.id);
+        if (parsed?.kind === 'char') return charEntityFor(parsed.id, mes.getAttribute('ch_name'));
+        return isUser ? personaEntity(_personas?.user_avatar) : charEntity();
     }
 
-    // background-size: contain — как картинка вписана изначально (scale=1)
-    const containScale = Math.min(contW / imgW, contH / imgH);
-    const baseW = imgW * containScale; // ширина картинки на экране при scale=1
-    const baseH = imgH * containScale;
-
-    // Масштаб (относительно contain), при котором картинка ПОЛНОСТЬЮ закрывает контейнер
-    const minScaleToCover = Math.max(contW / baseW, contH / baseH);
-
-    return { minScale: minScaleToCover, baseW, baseH, contW, contH };
-}
-
-// Зажимает сдвиг так, чтобы края картинки не заходили внутрь контейнера
-function clampOffsets(settings, bounds) {
-    if (!bounds || !bounds.baseW) return settings;
-
-    const scale = settings.scale / 100;
-    const scaledW = bounds.baseW * scale;
-    const scaledH = bounds.baseH * scale;
-
-    // Сколько картинка "выступает" за контейнер с каждой стороны
-    const maxX = Math.max(0, (scaledW - bounds.contW) / 2);
-    const maxY = Math.max(0, (scaledH - bounds.contH) / 2);
-
-    settings.x = Math.max(-maxX, Math.min(maxX, settings.x));
-    settings.y = Math.max(-maxY, Math.min(maxY, settings.y));
-    return settings;
-}
-
-// Применение стилей к элементу .avatar
-async function applyToAvatarEl(avatarEl) {
-    const img = avatarEl.querySelector(':scope > img');
-    if (!img) return;
-    const src = img.getAttribute('src');
-    const key = getAvatarKey(src);
-    if (!key) return;
-
-    const settings = getAvatarSettings(key);
-    const hasCustom = !!extension_settings[MODULE_NAME].avatars[key];
-
-    if (!hasCustom) {
-        removeOverlayLayer(avatarEl);
-        return;
+    // ── Применение к реальной аватарке ──────────────────────────────────────
+    async function applyToST(entity, dataUrl) {
+        const blob = dataUrlToBlob(dataUrl);
+        const fd = new FormData();
+        let url;
+        if (entity.type === 'persona') { fd.append('avatar', blob, 'avatar.png'); fd.append('overwrite_name', entity.id); url = '/api/avatars/upload'; }
+        else { fd.append('avatar', blob, 'avatar.png'); fd.append('avatar_url', entity.id); url = '/api/characters/edit-avatar'; }
+        const r = await fetch(url, { method: 'POST', headers: headers(), cache: 'no-cache', body: fd });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        try { await fetch(thumb(entity.type === 'persona' ? 'persona' : 'avatar', entity.id), { cache: 'reload' }); } catch {}
+        bustImages(entity.type, entity.id);
+        return true;
     }
 
-    // Находим оригинал
-    let originalUrl = originalUrlCache.get(key);
-    if (originalUrl === undefined) {
-        originalUrl = await findWorkingOriginalUrl(key);
-    }
-    if (!originalUrl) originalUrl = src; // fallback на thumbnail
-
-    // Создаём слой
-    const layer = ensureOverlayLayer(avatarEl);
-    avatarEl.classList.add('aa-has-original');
-
-    // Устанавливаем фон только если изменился
-    const desiredBg = `url("${originalUrl}")`;
-    if (layer.style.backgroundImage !== desiredBg) {
-        layer.style.backgroundImage = desiredBg;
-    }
-
-    // ── Считаем реальные размеры и зажимаем сдвиг по границам ──
-    const imgSize = await getImageSize(originalUrl);
-    const rect = avatarEl.getBoundingClientRect();
-    if (imgSize && rect.width && rect.height) {
-        const bounds = computeBounds(rect.width, rect.height, imgSize.w, imgSize.h);
-
-        // Не даём масштабу опуститься ниже минимального (чтобы не было дыр)
-        const minScalePercent = Math.ceil(bounds.minScale * 100);
-        if (settings.scale < minScalePercent) {
-            settings.scale = minScalePercent;
-        }
-
-        // Зажимаем сдвиг X/Y по границам
-        clampOffsets(settings, bounds);
-
-        // Сохраняем скорректированные значения обратно
-        saveAvatarSettings(key, settings);
-    }
-
-    // Трансформации через CSS-переменные на слое
-    layer.style.setProperty('--aa-scale', (settings.scale / 100).toString());
-    layer.style.setProperty('--aa-x', `${settings.x}px`);
-    layer.style.setProperty('--aa-y', `${settings.y}px`);
-    layer.style.setProperty('--aa-rotate', `${settings.rotate}deg`);
-}
-
-
-async function applyToAllMatching(key) {
-    const avatars = document.querySelectorAll('#chat .mes .avatar');
-    for (const avatarEl of avatars) {
-        const img = avatarEl.querySelector(':scope > img');
-        if (!img) continue;
-        if (getAvatarKey(img.getAttribute('src')) === key) {
-            await applyToAvatarEl(avatarEl);
-        }
-    }
-}
-
-function ensureEditButton(avatarEl) {
-    // Ищем родительский .mes — на него вешаем кнопку (у него нет overflow:hidden)
-    const mesEl = avatarEl.closest('.mes');
-    if (!mesEl) return;
-    if (mesEl.querySelector(':scope > .aa-edit-btn')) return;
-
-    const computed = window.getComputedStyle(mesEl);
-    if (computed.position === 'static') {
-        mesEl.style.position = 'relative';
-    }
-
-    const btn = document.createElement('div');
-    btn.className = 'aa-edit-btn';
-    btn.title = 'Редактировать аватарку';
-    btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-    btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        const img = avatarEl.querySelector(':scope > img');
-        if (img) openPanel(img, btn, avatarEl);
-    });
-    mesEl.appendChild(btn);
-}
-
-
-function processChatAvatars() {
-    document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
-        ensureEditButton(avatarEl);
-        applyToAvatarEl(avatarEl);
-    });
-}
-
-// ---- Панель ----
-let currentPanel = null;
-
-function closePanel() {
-    if (currentPanel) {
-        currentPanel.remove();
-        currentPanel = null;
-        document.removeEventListener('mousedown', onOutsideClick);
-    }
-}
-
-function onOutsideClick(e) {
-    if (currentPanel && !currentPanel.contains(e.target) && !e.target.closest('.aa-edit-btn')) {
-        closePanel();
-    }
-}
-
-function makeSliderRow(labelText, prop, state) {
-    const range = RANGES[prop];
-    const row = document.createElement('div');
-    row.className = 'aa-row';
-
-    const label = document.createElement('label');
-    label.textContent = labelText;
-
-    const input = document.createElement('input');
-    input.type = 'range';
-    input.min = range.min;
-    input.max = range.max;
-    input.step = range.step;
-    input.value = state[prop];
-    input.dataset.prop = prop;
-
-    row.appendChild(label);
-    row.appendChild(input);
-    return row;
-}
-
-// Возвращает минимально допустимый масштаб (в %) для конкретной аватарки,
-// чтобы картинка полностью закрывала контейнер (cover). Если посчитать нельзя — null.
-async function getMinScalePercent(avatarEl, key) {
-    if (!avatarEl) return null;
-
-    // Находим URL оригинала
-    let originalUrl = originalUrlCache.get(key);
-    if (originalUrl === undefined) {
-        originalUrl = await findWorkingOriginalUrl(key);
-    }
-    const img = avatarEl.querySelector(':scope > img');
-    if (!originalUrl && img) originalUrl = img.getAttribute('src');
-    if (!originalUrl) return null;
-
-    const imgSize = await getImageSize(originalUrl);
-    const rect = avatarEl.getBoundingClientRect();
-    if (!imgSize || !rect.width || !rect.height) return null;
-
-    const bounds = computeBounds(rect.width, rect.height, imgSize.w, imgSize.h);
-    if (!bounds || !bounds.minScale) return null;
-
-    return Math.ceil(bounds.minScale * 100);
-}
-
-async function openPanel(img, anchorBtn, avatarEl) {
-    closePanel();
-    const key = getAvatarKey(img.getAttribute('src'));
-    if (!key) return;
-
-    // Заранее прогреваем поиск оригинала
-    findWorkingOriginalUrl(key);
-
-    const settings = getAvatarSettings(key);
-    const displayName = key.split(':')[1] || key;
-
-    const panel = document.createElement('div');
-    panel.className = 'aa-panel';
-
-    const header = document.createElement('div');
-    header.className = 'aa-panel-header';
-
-    const title = document.createElement('div');
-    title.className = 'aa-panel-title';
-    title.textContent = 'Аватарка';
-    title.title = 'Аватарка';
-
-
-    const closeBtn = document.createElement('div');
-    closeBtn.className = 'aa-panel-close';
-    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-
-    header.appendChild(title);
-    header.appendChild(closeBtn);
-    panel.appendChild(header);
-
-    const state = { ...settings };
-
-    const rows = [
-        ['Масштаб', 'scale'],
-        ['Сдвиг X', 'x'],
-        ['Сдвиг Y', 'y'],
-        ['Поворот', 'rotate'],
-    ];
-
-        rows.forEach(([labelText, prop]) => {
-        panel.appendChild(makeSliderRow(labelText, prop, state));
-    });
-
-    // ── Подстраиваем минимум ползунка "Масштаб" под реальную аватарку ──
-    (async () => {
-        const minScalePercent = await getMinScalePercent(avatarEl, key);
-        if (minScalePercent) {
-            const scaleInput = panel.querySelector('input[data-prop="scale"]');
-            if (scaleInput) {
-                scaleInput.min = minScalePercent;
-                // Если текущее значение ниже минимума — подтягиваем к минимуму
-                if (parseInt(scaleInput.value, 10) < minScalePercent) {
-                    scaleInput.value = minScalePercent;
-                    state.scale = minScalePercent;
-                    saveAvatarSettings(key, state);
-                    await applyToAllMatching(key);
-                }
+    // ── Хранилище галереи ───────────────────────────────────────────────────
+    function mkImgId() { return 'img_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); }
+    async function getGallery(entity) {
+        let rec = await idbGet(entity.key);
+        const isNew = !rec;
+        if (!rec) rec = { key: entity.key, images: [], appliedId: null };
+        if (!Array.isArray(rec.images)) rec.images = [];
+        // Засеваем текущей аватаркой только при ПЕРВОМ создании записи: если пользователь
+        // сам опустошил галерею — не воскрешаем. Запись сохраняем всегда (даже пустую),
+        // чтобы не пере-засевать и не бить по сети при каждом открытии.
+        if (isNew) {
+            const cur = await urlToDataUrl(entity.fullSrc) || await urlToDataUrl(entity.currentSrc);
+            if (cur) {
+                const data = await downscale(cur);
+                const item = { id: mkImgId(), data, thumb: await downscale(data, THUMB_MAX), ts: Date.now() };
+                rec.images.push(item); rec.appliedId = item.id;
             }
+            await idbSet(rec);
         }
-    })();
-
-
-    const actions = document.createElement('div');
-    actions.className = 'aa-panel-actions';
-
-    const resetBtn = document.createElement('button');
-    resetBtn.className = 'aa-btn aa-btn-reset';
-    resetBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> Сбросить';
-
-    const doneBtn = document.createElement('button');
-    doneBtn.className = 'aa-btn aa-btn-done';
-    doneBtn.innerHTML = '<i class="fa-solid fa-check"></i> Готово';
-
-    actions.appendChild(resetBtn);
-    actions.appendChild(doneBtn);
-    panel.appendChild(actions);
-
-    document.body.appendChild(panel);
-    currentPanel = panel;
-
-    const rect = anchorBtn.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    let left = rect.right + 8;
-    let top = rect.top;
-    if (left + panelRect.width > window.innerWidth - 10) {
-        left = rect.left - panelRect.width - 8;
+        return rec;
     }
-    if (left < 10) left = 10;
-    if (top + panelRect.height > window.innerHeight - 10) {
-        top = window.innerHeight - panelRect.height - 10;
+    async function addImages(entity, dataUrls) {
+        // Жёсткий лимит: добавляем только пока есть место до MAX_IMAGES, лишнее не берём.
+        const rec = await getGallery(entity);
+        let last = null;
+        for (const du of dataUrls) {
+            if (rec.images.length >= MAX_IMAGES) break;
+            const data = await downscale(du);
+            const item = { id: mkImgId(), data, thumb: await downscale(data, THUMB_MAX), ts: Date.now() };
+            rec.images.push(item); last = item;
+        }
+        await idbSet(rec);
+        return last;
     }
-    if (top < 10) top = 10;
-    panel.style.left = `${left}px`;
-    panel.style.top = `${top}px`;
+    async function removeImage(entity, imgId) {
+        const rec = await getGallery(entity);
+        rec.images = rec.images.filter(i => i.id !== imgId);
+        if (rec.appliedId === imgId) rec.appliedId = null;
+        await idbSet(rec);
+        return rec;
+    }
+    async function markApplied(entity, imgId) { const rec = await getGallery(entity); rec.appliedId = imgId; await idbSet(rec); }
 
-    panel.querySelectorAll('input[type="range"]').forEach(input => {
-        input.addEventListener('input', async () => {
-            const prop = input.dataset.prop;
-            const val = parseInt(input.value, 10);
-            state[prop] = val;
-            saveAvatarSettings(key, state);
-            await applyToAllMatching(key);
-        });
-    });
+    // ── Одиночная галерея (модалка) ─────────────────────────────────────────
+    let _entity = null, _rec = null, _view = 0, _busy = false;
 
-
-    resetBtn.addEventListener('click', async () => {
-        Object.assign(state, DEFAULTS);
-        panel.querySelectorAll('input[type="range"]').forEach(input => {
-            const prop = input.dataset.prop;
-            input.value = state[prop];
-        });
-        saveAvatarSettings(key, state);
-        await applyToAllMatching(key);
-    });
-
-
-    closeBtn.addEventListener('click', closePanel);
-    doneBtn.addEventListener('click', closePanel);
-
-    setTimeout(() => {
-        document.addEventListener('mousedown', onOutsideClick);
-    }, 0);
-}
-
-function initObserver() {
-    const chat = document.getElementById('chat');
-    if (!chat) {
-        setTimeout(initObserver, 500);
-        return;
+    // ST закрывает открытые панели (персоны/персонаж) по mousedown/touchstart на html,
+    // если нажатие вне панели. Не пускаем события из наших окон/значков наверх,
+    // иначе панель под галереей закрывается.
+    function shieldFromST(el) {
+        ['mousedown', 'touchstart', 'pointerdown', 'click'].forEach(t =>
+            el.addEventListener(t, (e) => e.stopPropagation()));
     }
 
-    let processScheduled = false;
-    const scheduleProcess = () => {
-        if (processScheduled) return;
-        processScheduled = true;
-        requestAnimationFrame(() => {
-            processScheduled = false;
-            processChatAvatars();
-        });
-    };
-
-    const observer = new MutationObserver((mutations) => {
-        for (const m of mutations) {
-            if (m.addedNodes.length > 0) {
-                scheduleProcess();
+    function buildModal() {
+        if (document.getElementById('ag-modal')) return;
+        document.body.insertAdjacentHTML('beforeend', `
+<div id="ag-modal" role="dialog" aria-modal="true">
+  <div class="ag-panel">
+    <div class="ag-head">
+      <div class="ag-title"><span class="ag-ic"><i class="fa-solid fa-images"></i></span> <span id="ag-name">Галерея</span></div>
+      <button class="ag-close" id="ag-close" title="Закрыть"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="ag-sub" id="ag-sub"></div>
+    <div class="ag-stage">
+      <button class="ag-arrow" id="ag-prev"><i class="fa-solid fa-chevron-left"></i></button>
+      <div class="ag-figure" id="ag-figure">
+        <img id="ag-main" src="" alt="avatar">
+        <div class="ag-ring"></div>
+        <div class="ag-empty" id="ag-empty"><i class="fa-solid fa-image"></i><div>Пусто</div><small>Загрузи картинки ниже</small></div>
+      </div>
+      <button class="ag-arrow" id="ag-next"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+    <div class="ag-bar">
+      <span class="ag-counter" id="ag-counter">0 / 0</span>
+      <button class="ag-apply menu_button" id="ag-apply"><i class="fa-solid fa-wand-magic-sparkles"></i> Сделать аватаркой</button>
+    </div>
+    <div class="ag-thumbs" id="ag-thumbs"></div>
+    <div class="ag-foot">
+      <button class="ag-upload menu_button" id="ag-upload"><i class="fa-solid fa-plus"></i> Загрузить картинки</button>
+      <input type="file" id="ag-file" accept="image/*" multiple hidden>
+    </div>
+    <div class="ag-status" id="ag-status"></div>
+  </div>
+</div>`);
+        const $ = (id) => document.getElementById(id);
+        shieldFromST($('ag-modal'));
+        $('ag-close').onclick = closeModal;
+        $('ag-modal').onclick = (e) => { if (e.target.id === 'ag-modal') closeModal(); };
+        $('ag-prev').onclick = () => nav(-1);
+        $('ag-next').onclick = () => nav(1);
+        $('ag-apply').onclick = onApply;
+        $('ag-upload').onclick = () => $('ag-file').click();
+        $('ag-file').onchange = onUpload;
+        document.addEventListener('keydown', (e) => {
+            const galOpen = document.getElementById('ag-modal')?.classList.contains('open');
+            const mgr = document.getElementById('agm-modal');
+            if (e.key === 'Escape') {
+                if (galOpen) closeModal();
+                else if (mgr?.classList.contains('open')) mgr.classList.remove('open');
                 return;
             }
-            if (m.type === 'attributes' && m.attributeName === 'src') {
-                if (m.target.tagName === 'IMG' && m.target.closest('#chat .mes .avatar')) {
-                    const avatarEl = m.target.closest('.avatar');
-                    if (avatarEl) applyToAvatarEl(avatarEl);
-                }
-            }
+            if (!galOpen) return;
+            if (e.key === 'ArrowLeft') nav(-1);
+            if (e.key === 'ArrowRight') nav(1);
+        });
+    }
+    function closeModal() { document.getElementById('ag-modal')?.classList.remove('open'); }
+
+    async function openFor(entity) {
+        if (!entity) return;
+        buildModal();
+        _entity = entity; _view = 0;
+        document.getElementById('ag-modal').classList.add('open');
+        document.getElementById('ag-name').textContent = entity.name;
+        document.getElementById('ag-sub').textContent = entity.type === 'persona' ? 'Персона' : 'Персонаж';
+        setStatus('Загрузка…', '');
+        _rec = await getGallery(entity);
+        if (_rec.appliedId) { const i = _rec.images.findIndex(x => x.id === _rec.appliedId); if (i >= 0) _view = i; }
+        setStatus('', '');
+        render();
+        ensureThumbs(entity);
+    }
+
+    // Догенерируем мини-превью у старых галерей в фоне: сейчас лента уже показана
+    // полноразмерными, а при следующих открытиях загрузится быстро.
+    async function ensureThumbs(entity) {
+        const rec = await idbGet(entity.key);
+        if (!rec?.images?.some(i => !i.thumb)) return;
+        const made = {};
+        for (const im of rec.images) { if (!im.thumb) { try { made[im.id] = await downscale(im.data, THUMB_MAX); } catch {} } }
+        // Перечитываем запись перед сохранением: пока делали превью, картинки могли удалить/добавить.
+        const fresh = await idbGet(entity.key);
+        if (!fresh || !Array.isArray(fresh.images)) return;
+        let touched = false;
+        for (const im of fresh.images) { if (!im.thumb && made[im.id]) { im.thumb = made[im.id]; touched = true; } }
+        if (touched) await idbSet(fresh);
+        if (_rec && _entity?.key === entity.key) { for (const im of _rec.images) { if (!im.thumb && made[im.id]) im.thumb = made[im.id]; } }
+    }
+
+    function render() {
+        const $ = (id) => document.getElementById(id);
+        const imgs = _rec?.images || [];
+        const total = imgs.length;
+        const main = $('ag-main'), empty = $('ag-empty'), fig = $('ag-figure'), apply = $('ag-apply');
+        if (total === 0) {
+            main.style.display = 'none'; empty.style.display = 'flex'; fig.classList.remove('is-applied');
+            $('ag-counter').textContent = '0 / 0'; $('ag-prev').disabled = $('ag-next').disabled = true;
+            apply.disabled = true; $('ag-thumbs').innerHTML = ''; render._sig = ''; return;
         }
-    });
+        if (_view >= total) _view = total - 1; if (_view < 0) _view = 0;
+        const cur = imgs[_view];
+        const applied = cur.id === _rec.appliedId;
+        main.style.display = 'block'; empty.style.display = 'none';
+        showMain(main, cur.data);
+        fig.classList.toggle('is-applied', applied);
+        $('ag-counter').textContent = `${_view + 1} / ${total}`;
+        $('ag-prev').disabled = $('ag-next').disabled = total <= 1;
+        apply.disabled = applied || _busy;
+        apply.classList.toggle('is-current', applied);
+        apply.innerHTML = applied ? '<i class="fa-solid fa-circle-check"></i> Текущая аватарка' : '<i class="fa-solid fa-wand-magic-sparkles"></i> Сделать аватаркой';
 
-    observer.observe(chat, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['src'],
-    });
+        const thumbs = $('ag-thumbs');
+        // Ленту пересобираем только при изменении состава; при листании — только классы,
+        // иначе миниатюры пере-декодируются и мигают.
+        const sig = imgs.map(x => x.id).join(',') + '|' + _rec.appliedId;
+        if (render._sig !== sig) {
+            render._sig = sig;
+            thumbs.innerHTML = '';
+            imgs.forEach((im, i) => thumbs.appendChild(thumbEl(im, i === _view, im.id === _rec.appliedId,
+                () => { _view = i; render(); },
+                (e) => { e.stopPropagation(); onDelete(im.id); })));
+        } else {
+            Array.from(thumbs.children).forEach((w, i) => w.querySelector('.ag-thumb')?.classList.toggle('selected', i === _view));
+        }
+        // Центрируем активную миниатюру скроллом самой ленты: scrollIntoView крутит и
+        // родителей вплоть до страницы — на телефоне от этого уезжал весь экран.
+        const active = thumbs.children[_view];
+        if (active) {
+            const tr = thumbs.getBoundingClientRect(), ar = active.getBoundingClientRect();
+            thumbs.scrollLeft += (ar.left + ar.width / 2) - (tr.left + tr.width / 2);
+        }
+    }
+    // Подменяем главную картинку только когда она уже декодирована — без пустого кадра.
+    function showMain(img, src) {
+        if (img.src === src) return;
+        const token = (showMain._t = {});
+        const pre = new Image();
+        const swap = () => { if (showMain._t === token) img.src = src; };
+        pre.src = src;
+        if (pre.decode) pre.decode().then(swap, swap); else { pre.onload = swap; pre.onerror = swap; }
+    }
+    function thumbEl(im, selected, applied, onClick, onDel) {
+        const wrap = document.createElement('div');
+        wrap.className = 'ag-thumb-wrap' + (applied ? ' applied' : '');
+        const t = document.createElement('img');
+        t.className = 'ag-thumb' + (selected ? ' selected' : '');
+        t.src = im.thumb || im.data; t.decoding = 'async'; t.onclick = onClick;
+        const del = document.createElement('button');
+        del.className = 'ag-thumb-del'; del.title = 'Удалить'; del.innerHTML = '<i class="fa-solid fa-xmark"></i>'; del.onclick = onDel;
+        if (applied) { const s = document.createElement('div'); s.className = 'ag-thumb-star'; s.innerHTML = '<i class="fa-solid fa-circle-check"></i>'; wrap.appendChild(s); }
+        wrap.appendChild(t); wrap.appendChild(del);
+        return wrap;
+    }
+    function nav(d) { const total = _rec?.images?.length || 0; if (!total) return; _view = (_view + d + total) % total; render(); }
+    function setStatus(text, kind) {
+        const el = document.getElementById('ag-status'); if (!el) return;
+        el.textContent = text; el.className = 'ag-status ' + (kind || '');
+        if (kind === 'ok' || kind === 'warn') { clearTimeout(setStatus._t); setStatus._t = setTimeout(() => { el.textContent = ''; el.className = 'ag-status'; }, 3500); }
+    }
+    async function onUpload(e) {
+        const files = Array.from(e.target.files || []); e.target.value = '';
+        if (!files.length || !_entity) return;
+        // Считаем свободные места ДО чтения файлов — лишние не читаем и не добавляем.
+        const free = MAX_IMAGES - (await getGallery(_entity)).images.length;
+        if (free <= 0) { setStatus(`⚠ Лимит ${MAX_IMAGES} достигнут — удали лишнее`, 'warn'); return; }
+        const accept = files.slice(0, free);
+        const skipped = files.length - accept.length;
+        setStatus('Добавляю…', '');
+        const dataUrls = [];
+        for (const f of accept) { try { dataUrls.push(await fileToDataUrl(f)); } catch {} }
+        const last = await addImages(_entity, dataUrls);
+        _rec = await getGallery(_entity);
+        if (last) { const i = _rec.images.findIndex(x => x.id === last.id); if (i >= 0) _view = i; }
+        render();
+        if (skipped > 0) setStatus(`⚠ Добавлено ${dataUrls.length}, не вошло ${skipped} (лимит ${MAX_IMAGES})`, 'warn');
+        else setStatus(`✓ Добавлено: ${dataUrls.length}`, 'ok');
+    }
+    async function onDelete(imgId) {
+        if (!_entity) return;
+        _rec = await removeImage(_entity, imgId);
+        if (_view >= _rec.images.length) _view = Math.max(0, _rec.images.length - 1);
+        render();
+    }
+    async function onApply() {
+        if (!_entity || _busy) return;
+        const cur = _rec?.images?.[_view]; if (!cur) return;
+        _busy = true; render(); setStatus('Применяю…', '');
+        try { await applyToST(_entity, cur.data); await markApplied(_entity, cur.id); _rec = await getGallery(_entity); setStatus('✓ Аватарка обновлена', 'ok'); }
+        catch (err) { console.error('[AvatarGallery] apply', err); setStatus('⚠ Не удалось применить (' + (err?.message || 'ошибка') + ')', 'warn'); }
+        finally { _busy = false; render(); }
+    }
 
-    processChatAvatars();
+    // ── Менеджер всех аватарок ──────────────────────────────────────────────
+    function buildManager() {
+        if (document.getElementById('agm-modal')) return;
+        document.body.insertAdjacentHTML('beforeend', `
+<div id="agm-modal" role="dialog" aria-modal="true">
+  <div class="ag-panel agm-panel">
+    <div class="ag-head">
+      <div class="ag-title"><span class="ag-ic"><i class="fa-solid fa-layer-group"></i></span> <span>Менеджер аватарок</span></div>
+      <button class="ag-close" id="agm-close" title="Закрыть"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="agm-list" id="agm-list"></div>
+    <div class="ag-status" id="agm-status"></div>
+  </div>
+</div>`);
+        shieldFromST(document.getElementById('agm-modal'));
+        document.getElementById('agm-close').onclick = () => document.getElementById('agm-modal').classList.remove('open');
+        document.getElementById('agm-modal').onclick = (e) => { if (e.target.id === 'agm-modal') e.currentTarget.classList.remove('open'); };
+    }
+    async function openManager() {
+        buildManager();
+        document.getElementById('agm-modal').classList.add('open');
+        await renderManager();
+    }
+    function mgrStatus(text, kind) {
+        const el = document.getElementById('agm-status'); if (!el) return;
+        el.textContent = text; el.className = 'ag-status ' + (kind || '');
+        if (kind) { clearTimeout(mgrStatus._t); mgrStatus._t = setTimeout(() => { el.textContent = ''; el.className = 'ag-status'; }, 3000); }
+    }
+    async function renderManager() {
+        const list = document.getElementById('agm-list'); if (!list) return;
+        const recs = (await idbGetAll()).filter(r => Array.isArray(r.images) && r.images.length);
+        list.innerHTML = '';
+        if (!recs.length) { list.innerHTML = '<div class="agm-empty"><i class="fa-solid fa-folder-open"></i><div>Пока нет сохранённых аватарок</div><small>Открой галерею на любой аватарке и добавь картинки</small></div>'; return; }
+        recs.sort((a, b) => a.key.localeCompare(b.key));
+        for (const rec of recs) {
+            const ent = entityFromKey(rec.key);
+            const name = ent?.name || rec.key;
+            const isPersona = rec.key.startsWith('persona:');
+            const sec = document.createElement('div'); sec.className = 'agm-entity';
+            const head = document.createElement('div'); head.className = 'agm-entity-head';
+            head.innerHTML = `<span class="agm-ic"><i class="fa-solid ${isPersona ? 'fa-id-badge' : 'fa-user'}"></i></span>
+                <span class="agm-entity-name" title="Открыть галерею">${escapeHtml(name)}</span>
+                <span class="agm-entity-cnt">${rec.images.length}</span>`;
+            const delAll = document.createElement('button');
+            delAll.className = 'agm-entity-del'; delAll.title = 'Удалить всю галерею этой аватарки';
+            delAll.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            delAll.onclick = async (e) => { e.stopPropagation(); if (confirm(`Удалить все ${rec.images.length} картинок для «${name}»?`)) { await idbDel(rec.key); renderManager(); } };
+            head.appendChild(delAll);
+            head.querySelector('.agm-entity-name').onclick = () => { if (ent) { document.getElementById('agm-modal').classList.remove('open'); openFor(ent); } };
+            sec.appendChild(head);
+
+            const strip = document.createElement('div'); strip.className = 'ag-thumbs agm-strip';
+            rec.images.forEach((im) => strip.appendChild(thumbEl(im, false, im.id === rec.appliedId,
+                () => mgrApply(rec.key, im.id),
+                (e) => { e.stopPropagation(); mgrDelImg(rec.key, im.id); })));
+            sec.appendChild(strip);
+            list.appendChild(sec);
+        }
+    }
+    async function mgrApply(key, imgId) {
+        const ent = entityFromKey(key); const rec = await idbGet(key);
+        const im = rec?.images?.find(i => i.id === imgId);
+        if (!ent || !im) return;
+        mgrStatus('Применяю…', 'wait');
+        try { await applyToST(ent, im.data); rec.appliedId = imgId; await idbSet(rec); await renderManager(); mgrStatus('✓ «' + ent.name + '» обновлена', 'ok'); }
+        catch (err) { mgrStatus('⚠ Ошибка: ' + (err?.message || ''), 'warn'); }
+    }
+    async function mgrDelImg(key, imgId) {
+        const rec = await idbGet(key); if (!rec) return;
+        rec.images = rec.images.filter(i => i.id !== imgId);
+        if (rec.appliedId === imgId) rec.appliedId = null;
+        await idbSet(rec); // храним пустую запись (галерея просто скрывается из списка), чтобы не воскрешать текущей аватаркой
+        renderManager();
+    }
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    // ── Значки-оверлеи ──────────────────────────────────────────────────────
+    function makeBtn(onClick, variant) {
+        const b = document.createElement('div');
+        b.className = 'ag-ov' + (variant ? ' ' + variant : '');
+        b.title = 'Галерея аватарок';
+        b.innerHTML = '<i class="fa-solid fa-images"></i>';
+        shieldFromST(b);
+        b.onclick = (e) => { e.preventDefault(); onClick(); };
+        return b;
+    }
+    function attachOverlay(av, onClick, variant) {
+        if (!av || av.querySelector(':scope > .ag-ov')) return;
+        av.style.position = 'relative';
+        av.appendChild(makeBtn(onClick, variant));
+    }
+    function attachPersonaOverlays() {
+        document.querySelectorAll('#user_avatar_block .avatar-container[data-avatar-id]').forEach(cont => {
+            const av = cont.querySelector('.avatar') || cont;
+            attachOverlay(av, () => {
+                const id = cont.getAttribute('data-avatar-id');
+                const name = cont.querySelector('.ch_name')?.textContent?.trim();
+                if (id) openFor(personaEntity(id, name));
+            });
+        });
+    }
+    function attachCharOverlay() {
+        const host = document.getElementById('avatar_div_div');
+        if (!host) return;
+        // Нет выбранного персонажа (группа / welcome) — не показываем бесполезный значок.
+        if (!charEntity()) { host.querySelector(':scope > .ag-ov')?.remove(); return; }
+        attachOverlay(host, () => { const e = charEntity(); if (e) openFor(e); });
+    }
+    function attachMessageOverlays() {
+        if (!settings().onMessages) return;
+        document.querySelectorAll('#chat .mes .mesAvatarWrapper .avatar').forEach(av => {
+            const mes = av.closest('.mes');
+            attachOverlay(av, () => { const e = entityFromMessage(mes); if (e) openFor(e); }, 'hoveronly');
+        });
+    }
+    function removeOverlays(sel) { document.querySelectorAll(sel || '.ag-ov').forEach(el => el.remove()); }
+
+    // ── Меню-палочка ────────────────────────────────────────────────────────
+    function addWandEntry() {
+        const menu = document.getElementById('extensionsMenu');
+        if (!menu || document.getElementById('ag-wand')) return;
+        const item = document.createElement('div');
+        item.id = 'ag-wand';
+        item.className = 'list-group-item flex-container flexGap5 interactable';
+        item.tabIndex = 0;
+        item.innerHTML = '<div class="fa-solid fa-images extensionsMenuExtensionButton"></div><span>Менеджер аватарок</span>';
+        item.onclick = openManager;
+        menu.appendChild(item);
+    }
+    function removeWandEntry() { document.getElementById('ag-wand')?.remove(); }
+
+    // ── Настройки ───────────────────────────────────────────────────────────
+    function addSettingsPanel() {
+        const root = document.getElementById('extensions_settings') || document.getElementById('extensions_settings2');
+        if (!root || document.getElementById('ag-settings')) return;
+        root.insertAdjacentHTML('beforeend', `
+<div id="ag-settings" class="inline-drawer">
+  <div class="inline-drawer-header" id="ag-drawer-head" style="cursor:pointer">
+    <b><i class="fa-solid fa-images"></i> Галерея аватарок</b>
+    <div id="ag-drawer-icon" class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+  </div>
+  <div class="inline-drawer-content" id="ag-drawer-body" style="display:none">
+    <label class="checkbox_label ag-toggle"><input type="checkbox" id="ag-enabled"><span>Включить галерею</span></label>
+    <label class="checkbox_label ag-toggle"><input type="checkbox" id="ag-on-messages"><span>Значки в сообщениях чата</span></label>
+    <button id="ag-open-mgr" class="menu_button ag-mgr-btn"><i class="fa-solid fa-layer-group"></i> Менеджер аватарок</button>
+    <div class="ag-facts">
+      <div class="ag-fact"><i class="fa-solid fa-images"></i><b>${MAX_IMAGES}</b><span>в галерее</span></div>
+      <div class="ag-fact"><i class="fa-solid fa-expand"></i><b>${STORE_MAX}px</b><span>макс. сторона</span></div>
+      <div class="ag-fact"><i class="fa-solid fa-database"></i><b>Локально</b><span>IndexedDB</span></div>
+    </div>
+    <small class="ag-hint"><i class="fa-solid fa-circle-info"></i><span>Прозрачность PNG/WebP сохраняется, фото пережимаются в JPEG. Клик по значку 🖼 на аватарке — её галерея.</span></small>
+  </div>
+</div>`);
+        const body = document.getElementById('ag-drawer-body');
+        const icon = document.getElementById('ag-drawer-icon');
+        document.getElementById('ag-drawer-head').onclick = () => {
+            const open = body.style.display !== 'none';
+            body.style.display = open ? 'none' : 'flex';
+            icon.classList.toggle('fa-circle-chevron-up', !open);
+            icon.classList.toggle('fa-circle-chevron-down', open);
+            icon.classList.toggle('up', !open); icon.classList.toggle('down', open);
+        };
+        document.getElementById('ag-open-mgr').onclick = openManager;
+        const en = document.getElementById('ag-enabled');
+        const msg = document.getElementById('ag-on-messages');
+        en.checked = isEnabled(); msg.checked = settings().onMessages !== false;
+        en.onchange = () => { settings().enabled = en.checked; save(); applyEnabledState(); };
+        msg.onchange = () => { settings().onMessages = msg.checked; save(); removeOverlays('.ag-ov.hoveronly'); tick(); };
+    }
+    function applyEnabledState() {
+        if (isEnabled()) { tick(); }
+        else { removeOverlays(); removeWandEntry(); closeModal(); document.getElementById('agm-modal')?.classList.remove('open'); }
+    }
+
+    // ── Init ────────────────────────────────────────────────────────────────
+    buildModal();
+    function tick() {
+        if (!isEnabled()) return;
+        attachPersonaOverlays();
+        attachCharOverlay();
+        attachMessageOverlays();
+        addWandEntry();
+    }
+function initOnce() {
+    addSettingsPanel();
+    addWandEntry();
+    applyEnabledState();
+    return !!document.getElementById('ag-settings');
 }
+(function retryInit(attempt = 0) {
+    const ok = initOnce();
+    if (!ok && attempt < 60) {
+        setTimeout(() => retryInit(attempt + 1), 500);
+    }
+})();
 
-jQuery(async () => {
-    initSettings();
-    initObserver();
-    log('loaded');
+const rootObs = new MutationObserver(() => {
+    if (!document.getElementById('ag-settings')) addSettingsPanel();
+    if (!document.getElementById('ag-wand') && isEnabled()) addWandEntry();
 });
+rootObs.observe(document.body, { childList: true, subtree: true });
+
+
+    try {
+        const ev = _script?.eventSource ?? ctx()?.eventSource;
+        const et = _script?.event_types ?? ctx()?.eventTypes ?? ctx()?.event_types;
+        if (ev && et) {
+            const on = () => setTimeout(tick, 250);
+            [et.CHAT_CHANGED, et.CHARACTER_SELECTED, et.PERSONA_CHANGED, et.SETTINGS_UPDATED, et.MESSAGE_RECEIVED, et.USER_MESSAGE_RENDERED, et.CHARACTER_MESSAGE_RENDERED].forEach(e => { if (e) try { ev.on(e, on); } catch {} });
+        }
+    } catch {}
+
+    let dbt;
+    const isOurNode = (n) => n.nodeType === 1 && (n.classList?.contains('ag-ov') || n.id === 'ag-wand');
+    const obs = new MutationObserver((muts) => {
+        if (!isEnabled()) return;
+        // Пропускаем мутации, вызванные нашими же оверлеями/пунктом меню — иначе observer гоняет tick вхолостую.
+        const onlyOurs = muts.some(m => m.addedNodes.length > 0)
+            && muts.every(m => m.removedNodes.length === 0 && Array.from(m.addedNodes).every(isOurNode));
+        if (onlyOurs) return;
+        clearTimeout(dbt); dbt = setTimeout(tick, 200);
+    });
+    const observe = (id, opts) => { const el = document.getElementById(id); if (el) obs.observe(el, opts); };
+    const startObs = () => {
+        observe('user_avatar_block', { childList: true, subtree: true });
+        observe('extensionsMenu', { childList: true });
+        observe('chat', { childList: true });
+    };
+    [500, 2000].forEach(t => setTimeout(startObs, t));
+
+    window.AvatarGallery = { open: openFor, openManager, personaEntity, charEntity, charEntityFor };
+    console.log('[AvatarGallery] ready ✓ (real ST avatar swap + manager)');
+})();
