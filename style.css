@@ -220,39 +220,40 @@
     border-color: #ff6464;
 }
 /* ── Мобильная адаптация панели ── */
-@media (max-width: 768px) {
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
     .aa-panel {
-        /* Панель по центру внизу экрана, во всю ширину */
         left: 50% !important;
         top: auto !important;
-        bottom: 10px !important;
+        bottom: 12px !important;
         transform: translateX(-50%) !important;
         width: calc(100vw - 20px) !important;
         min-width: 0 !important;
         max-width: 420px !important;
         box-sizing: border-box !important;
+        z-index: 100000 !important;
+        max-height: 70vh !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
     }
 
-    /* Крупнее ползунки — удобнее пальцем */
+    .aa-panel-header {
+        position: sticky;
+        top: 0;
+        background: var(--SmartThemeBlurTintColor, #1a1a1a);
+        z-index: 2;
+    }
+
     .aa-row input[type="range"] {
-        height: 26px !important;
+        height: 30px !important;
     }
 
-    /* Крупнее кнопки Сбросить/Готово */
     .aa-btn {
-        padding: 10px 12px !important;
-        font-size: 14px !important;
+        padding: 12px 12px !important;
+        font-size: 15px !important;
     }
 
-    /* Шестерёнка на мобилке — крупнее и всегда чуть видна (нет hover) */
-    .mes > .aa-edit-btn {
-        width: 22px !important;
-        height: 22px !important;
-        font-size: 15px !important;
-        opacity: 0.55 !important;
-    }
-    .mes > .aa-edit-btn:hover,
-    .mes > .aa-edit-btn:active {
-        opacity: 1 !important;
+    .aa-panel-close {
+        padding: 8px 12px !important;
+        font-size: 18px !important;
     }
 }
