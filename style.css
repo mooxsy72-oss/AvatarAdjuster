@@ -390,9 +390,10 @@
 
 /* ── Сенсорные экраны: то, что обычно по наведению — делаем доступным по тапу ── */
 @media (hover: none) {
-    .ag-ov { opacity: .85; }
+    .ag-ov.hoveronly { opacity: .85; pointer-events: auto; transform: none; }
     .ag-thumb-del { display: flex; }
 }
+
 
 /* ── Фикс для мобилок: окно фиксируем во viewport, а не в html ── */
 @media (max-width: 560px) {
