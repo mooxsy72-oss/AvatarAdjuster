@@ -322,6 +322,7 @@ function closePanel() {
         currentPanel.remove();
         currentPanel = null;
         document.removeEventListener('mousedown', onOutsideClick);
+        document.removeEventListener('touchstart', onOutsideClick);
     }
 }
 
@@ -330,6 +331,7 @@ function onOutsideClick(e) {
         closePanel();
     }
 }
+
 
 function makeSliderRow(labelText, prop, state) {
     const range = RANGES[prop];
@@ -499,7 +501,8 @@ async function openPanel(img, anchorBtn, avatarEl) {
 
     setTimeout(() => {
         document.addEventListener('mousedown', onOutsideClick);
-    }, 0);
+        document.addEventListener('touchstart', onOutsideClick, { passive: true });
+    }, 150);
 }
 
 function initObserver() {
