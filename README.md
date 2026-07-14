@@ -1,5 +1,5 @@
-<img width="586" height="399" alt="image" src="https://github.com/user-attachments/assets/a669b3fe-1c3a-4bc4-8a59-a1c23876e137" /># AvatarAdjuster
-Штучка, чтобы двигать и менять масштаб картинок внутри аватарки
+# AvatarAdjuster
+Расширка, чтобы двигать и менять масштаб картинок внутри аватарки
 
 ## Установка
 
