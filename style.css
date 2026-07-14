@@ -1,238 +1,412 @@
-/* ============ Иконка-шестерёнка ============ */
-.mes > .aa-edit-btn {
+/* ===== Avatar Gallery — адаптируется под тему SillyTavern ===== */
+
+#ag-modal, #agm-modal, #ag-settings {
+    --ag-text: var(--SmartThemeBodyColor, #e8e8e8);
+    --ag-border: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.16));
+    --ag-panel: var(--SmartThemeBlurTintColor, rgba(20, 20, 28, 0.92));
+    --ag-accent: var(--SmartThemeQuoteColor, var(--SmartThemeEmColor, #6c8cff));
+    --ag-shadow: var(--SmartThemeShadowColor, rgba(0, 0, 0, 0.6));
+    --ag-radius: 16px;
+    --ag-line: color-mix(in srgb, var(--ag-text) 12%, transparent);
+    --ag-soft: color-mix(in srgb, var(--ag-text) 6%, transparent);
+    --ag-softer: color-mix(in srgb, var(--ag-text) 4%, transparent);
+}
+
+/* ── Значок-оверлей на аватарке ── */
+.ag-ov {
     position: absolute;
-    top: 8px;
-    left: 8px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: transparent;
-    color: #ffffff;
+    right: 4px;
+    bottom: 4px;
+    z-index: 6;
+    width: 23px;
+    height: 23px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 13px;
+    border-radius: 8px;
+    font-size: 11px;
     line-height: 1;
+    color: #fff;
+    background:
+        linear-gradient(145deg,
+            color-mix(in srgb, var(--SmartThemeQuoteColor, #6c8cff) 75%, transparent),
+            color-mix(in srgb, var(--SmartThemeQuoteColor, #6c8cff) 45%, var(--SmartThemeBlurTintColor, #111)));
+    border: 1px solid color-mix(in srgb, #fff 35%, transparent);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--SmartThemeShadowColor, #000) 55%, transparent);
+    backdrop-filter: blur(4px);
     cursor: pointer;
-    opacity: 0.001;
-    transition: opacity 0.18s ease;
-    z-index: 99999 !important;
-    pointer-events: auto;
-    border: none;
-    box-shadow: none;
-    backdrop-filter: none;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+    opacity: 0.78;
+    transform: translateZ(0);
+    transition: opacity .16s, box-shadow .16s, transform .14s cubic-bezier(.34, 1.4, .5, 1);
 }
-
-.mes > .aa-edit-btn::before {
-    content: "";
-    position: absolute;
-    top: -25px;
-    left: -25px;
-    right: -25px;
-    bottom: -25px;
-    background: transparent;
-    border-radius: 50%;
-    z-index: -1;
-}
-
-.mes > .aa-edit-btn:hover {
+.ag-ov:hover {
     opacity: 1;
-    color: var(--SmartThemeQuoteColor, #ffb86c);
+    transform: scale(1.12) rotate(-3deg);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--SmartThemeQuoteColor, #6c8cff) 55%, transparent);
 }
+.ag-ov:active { transform: scale(.96); }
+.ag-ov i { pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); }
+/* в сообщениях и списке персонажей — показываем только при наведении на аватарку */
+.ag-ov.hoveronly { opacity: 0; pointer-events: none; transform: scale(.85); }
+.avatar:hover > .ag-ov.hoveronly, .mesAvatarWrapper:hover .ag-ov.hoveronly, .ag-ov.hoveronly:hover { opacity: 1; pointer-events: auto; transform: scale(1); }
 
-/* ============ Оверлей с оригиналом ============ */
-.mes .avatar.aa-has-original {
-    overflow: hidden !important;
-    position: relative !important;
-}
-
-/* Скрываем оригинальный img, но сохраняем его в потоке для размеров */
-.mes .avatar.aa-has-original > img {
-    visibility: hidden;
-}
-
-/* Тёмный фон под слоем, чтобы пустые поля по бокам (от contain)
-   не выглядели дырами, а смотрелись как рамка */
-.mes .avatar.aa-has-original {
-    background-color: #1a1a1a;
-}
-
-
-/* Наш слой с оригиналом — показываем картинку ЦЕЛИКОМ (contain),
-   чтобы ползунки двигали полное изображение, а не обрезанный кусок */
-.mes .avatar > .aa-original-layer {
-    position: absolute;
+/* ── Бэкдроп ── */
+#ag-modal, #agm-modal {
+    display: none;
+    position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
-    background-repeat: no-repeat;
-    background-position: center center;
-    background-size: contain;
-    transform-origin: center center;
-    transform:
-        translate(var(--aa-x, 0px), var(--aa-y, 0px))
-        rotate(var(--aa-rotate, 0deg))
-        scale(var(--aa-scale, 1));
-    transition: transform 0.15s ease;
-    pointer-events: none;
-    z-index: 1;
-}
-
-
-
-
-/* Иконка и галерея — над оверлеем */
-.mes .avatar .aa-edit-btn,
-.mes .avatar .ag-ov {
-    z-index: 2;
-}
-
-
-/* ============ Панель редактирования ============ */
-.aa-panel {
-    position: fixed;
-    z-index: 10000;
-    background: var(--SmartThemeBlurTintColor, #1a1a1a);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--SmartThemeBorderColor, #444);
-    border-radius: 10px;
-    padding: 14px;
-    min-width: 280px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
-    color: var(--SmartThemeBodyColor, #eee);
-    font-family: var(--mainFontFamily, sans-serif);
-    font-size: 13px;
-    user-select: none;
-    animation: aa-fade-in 0.18s ease;
-}
-
-@keyframes aa-fade-in {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-.aa-panel-header {
-    display: flex;
-    justify-content: space-between;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     align-items: center;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
-    font-weight: bold;
-    font-size: 13px;
-    gap: 8px;
+    justify-content: center;
+    padding: 20px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    background: color-mix(in srgb, var(--SmartThemeShadowColor, #000) 76%, transparent);
+    backdrop-filter: blur(7px);
+    font-family: var(--mainFontFamily, inherit);
+    font-size: var(--mainFontSize, 14px);
+    color: var(--ag-text);
 }
 
-.aa-panel-title {
-    color: var(--SmartThemeQuoteColor, #ffb86c);
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+#agm-modal { z-index: 100000; }
+#ag-modal { z-index: 100001; }
+#ag-modal.open, #agm-modal.open { display: flex; animation: ag-fade .18s ease; }
+@keyframes ag-fade { from { opacity: 0 } to { opacity: 1 } }
+
+/* ── Панель ── */
+.ag-panel {
+    position: relative;
+    width: min(460px, 94vw);
+    max-height: 92vh;
+    max-height: 92svh; /* svh = видимая высота на мобиле (с учётом панели браузера) */
+    margin: auto; /* вместе со скроллом бэкдропа не даёт обрезать верх при переполнении */
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px 20px 16px;
+    border-radius: var(--ag-radius);
+    color: var(--ag-text);
+    background: var(--ag-panel);
+    border: 1px solid var(--ag-border);
+    box-shadow:
+        0 28px 70px var(--ag-shadow),
+        0 2px 10px color-mix(in srgb, var(--ag-shadow) 50%, transparent),
+        inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
+    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength, 10) * 1px));
+    animation: ag-pop .22s cubic-bezier(.34, 1.18, .64, 1);
+}
+/* акцентная полоса сверху */
+.ag-panel::before {
+    content: "";
+    position: absolute; inset: 0 0 auto 0; height: 3px;
+    border-radius: var(--ag-radius) var(--ag-radius) 0 0;
+    background: linear-gradient(90deg,
+        transparent,
+        color-mix(in srgb, var(--ag-accent) 75%, transparent),
+        transparent);
+    opacity: .8;
+}
+.ag-panel::-webkit-scrollbar { width: 9px; }
+.ag-panel::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ag-text) 18%, transparent); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+@keyframes ag-pop { from { transform: translateY(16px) scale(.97); opacity: 0 } to { transform: none; opacity: 1 } }
+
+/* ── Иконка-чип ── */
+.ag-ic {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; flex-shrink: 0;
+    border-radius: 9px; font-size: .9em;
+    color: var(--ag-accent);
+    background: color-mix(in srgb, var(--ag-accent) 16%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ag-accent) 28%, transparent);
 }
 
-.aa-panel-close {
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
-    transition: background 0.15s ease;
+/* ── Шапка ── */
+.ag-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ag-title { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 1.02em; min-width: 0; }
+.ag-title > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-close {
+    flex-shrink: 0; width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid transparent; border-radius: 9px;
+    background: var(--ag-soft);
+    color: color-mix(in srgb, var(--ag-text) 62%, transparent);
+    cursor: pointer; font-size: 1.02em;
+    transition: background .15s, color .15s, transform .2s, border-color .15s;
+}
+.ag-close:hover { background: color-mix(in srgb, #ff5252 32%, transparent); color: #fff; border-color: color-mix(in srgb, #ff5252 45%, transparent); transform: rotate(90deg); }
+.ag-close:active { transform: rotate(90deg) scale(.9); }
+.ag-sub {
+    align-self: center; margin-top: -8px;
+    padding: 2px 11px; border-radius: 999px;
+    font-size: .64em; font-weight: 700; opacity: .85;
+    text-transform: uppercase; letter-spacing: .1em;
+    color: color-mix(in srgb, var(--ag-accent) 80%, var(--ag-text));
+    background: color-mix(in srgb, var(--ag-accent) 12%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ag-accent) 22%, transparent);
+}
+.ag-sub:empty { display: none; }
+
+/* ── Сцена ── */
+.ag-stage { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.ag-figure {
+    position: relative;
+    width: min(244px, 60vw);
+    aspect-ratio: 1 / 1;
     flex-shrink: 0;
+    border-radius: var(--ag-radius);
+    overflow: hidden;
+    background:
+        repeating-conic-gradient(color-mix(in srgb, var(--ag-text) 7%, transparent) 0% 25%, transparent 0% 50%)
+        0 0 / 18px 18px,
+        var(--ag-softer);
+    border: 1px solid var(--ag-border);
+    box-shadow: inset 0 2px 14px color-mix(in srgb, #000 22%, transparent);
 }
+#ag-main { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity .16s, transform .16s; }
+#ag-main.fade { opacity: 0; transform: scale(.97); }
+.ag-ring {
+    position: absolute; inset: 0; border-radius: var(--ag-radius);
+    pointer-events: none; opacity: 0; transition: opacity .25s;
+    box-shadow: inset 0 0 0 3px var(--ag-accent), inset 0 0 24px color-mix(in srgb, var(--ag-accent) 45%, transparent), 0 0 26px color-mix(in srgb, var(--ag-accent) 35%, transparent);
+}
+.ag-figure.is-applied .ag-ring { opacity: 1; }
+/* плашка «текущая» поверх фигуры — тёмная основа, чтобы белый текст читался при любом акценте темы */
+.ag-figure.is-applied::after {
+    content: "✓ ТЕКУЩАЯ";
+    position: absolute; left: 10px; top: 10px; z-index: 3;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: .6em; font-weight: 700; letter-spacing: .08em;
+    color: #fff;
+    background: color-mix(in srgb, var(--ag-accent) 38%, rgba(8, 8, 12, .92));
+    border: 1px solid color-mix(in srgb, #fff 22%, transparent);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .65);
+    box-shadow: 0 2px 8px color-mix(in srgb, #000 55%, transparent);
+}
+.ag-empty {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+    color: color-mix(in srgb, var(--ag-text) 42%, transparent); font-size: .82em; text-align: center;
+}
+.ag-empty i { font-size: 2.6em; opacity: .35; }
+.ag-empty small { opacity: .7; }
 
-.aa-panel-close:hover {
-    background: rgba(255, 255, 255, 0.1);
+.ag-arrow {
+    flex-shrink: 0; width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; border: 1px solid var(--ag-border);
+    background: var(--ag-soft);
+    color: var(--ag-text); cursor: pointer; font-size: .95em;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--ag-shadow) 35%, transparent);
+    transition: background .15s, transform .14s, border-color .15s, box-shadow .15s;
 }
+.ag-arrow:hover { background: color-mix(in srgb, var(--ag-accent) 35%, transparent); border-color: color-mix(in srgb, var(--ag-accent) 50%, transparent); transform: scale(1.08); }
+.ag-arrow:active { transform: scale(.93); }
+.ag-arrow:disabled { opacity: .22; pointer-events: none; box-shadow: none; }
+#ag-prev:hover:not(:disabled) i { animation: ag-nudge-l .5s ease infinite alternate; }
+#ag-next:hover:not(:disabled) i { animation: ag-nudge-r .5s ease infinite alternate; }
+@keyframes ag-nudge-l { to { transform: translateX(-2px) } }
+@keyframes ag-nudge-r { to { transform: translateX(2px) } }
 
-.aa-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
+/* ── Действие ── */
+.ag-bar { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.ag-counter { font-size: .82em; opacity: .55; font-variant-numeric: tabular-nums; min-width: 46px; text-align: center; letter-spacing: .03em; }
+#ag-modal .ag-apply { display: inline-flex; align-items: center; gap: 7px; border-radius: 10px; font-weight: 600; transition: filter .15s, transform .12s, box-shadow .15s; }
+#ag-modal .ag-apply:not(:disabled) {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--ag-accent) 92%, #fff), color-mix(in srgb, var(--ag-accent) 70%, #000));
+    color: #fff; border: none;
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--ag-accent) 40%, transparent);
 }
+#ag-modal .ag-apply:not(:disabled):hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 18px color-mix(in srgb, var(--ag-accent) 50%, transparent); }
+#ag-modal .ag-apply:not(:disabled):hover i { animation: ag-spark .6s ease infinite; }
+#ag-modal .ag-apply:not(:disabled):active { transform: translateY(0) scale(.98); }
+@keyframes ag-spark { 0%, 100% { transform: rotate(0) scale(1) } 40% { transform: rotate(-12deg) scale(1.15) } }
+/* применённая аватарка — кнопка остаётся читаемой (а не блёкло-disabled) */
+#ag-modal .ag-apply.is-current {
+    opacity: 1;
+    cursor: default;
+    border: 1px solid color-mix(in srgb, var(--ag-accent) 45%, transparent);
+    background: color-mix(in srgb, var(--ag-accent) 18%, transparent);
+    color: color-mix(in srgb, var(--ag-text) 88%, var(--ag-accent));
+    box-shadow: none;
+}
+#ag-modal .ag-apply.is-current i { color: color-mix(in srgb, #4caf50 65%, var(--ag-accent)); }
 
-.aa-row label {
-    flex: 0 0 70px;
-    font-size: 12px;
-    opacity: 0.85;
+/* ── Миниатюры (горизонтальная лента) ── */
+.ag-thumbs {
+    display: flex; flex-wrap: nowrap; gap: 8px; justify-content: flex-start;
+    min-height: 64px; overflow-x: auto; overflow-y: hidden;
+    /* отступы ≥ выноса кружка-метки (top/left -5..-6px), иначе он обрезается краем ленты */
+    padding: 9px 9px 10px;
+    scrollbar-width: thin; scroll-behavior: smooth;
+    scrollbar-color: color-mix(in srgb, var(--ag-text) 25%, transparent) transparent;
 }
+.ag-thumbs::-webkit-scrollbar { height: 8px; }
+.ag-thumbs::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ag-text) 22%, transparent); border-radius: 5px; }
+.ag-thumb-wrap { position: relative; width: 54px; height: 54px; flex: 0 0 auto; }
+.ag-thumb {
+    width: 54px; height: 54px; object-fit: cover; border-radius: 9px; cursor: pointer;
+    opacity: .6; border: 2px solid transparent;
+    box-shadow: 0 1px 4px color-mix(in srgb, #000 25%, transparent);
+    transition: opacity .15s, border-color .15s, transform .12s, box-shadow .15s;
+}
+.ag-thumb:hover { opacity: 1; transform: translateY(-2px) scale(1.06); box-shadow: 0 5px 14px color-mix(in srgb, #000 40%, transparent); }
+.ag-thumb.selected { opacity: 1; border-color: color-mix(in srgb, var(--ag-text) 50%, transparent); }
+.ag-thumb-wrap.applied .ag-thumb { opacity: 1; border-color: var(--ag-accent); box-shadow: 0 0 0 1px var(--ag-accent), 0 0 12px color-mix(in srgb, var(--ag-accent) 45%, transparent); }
+.ag-thumb-star {
+    position: absolute; left: -5px; top: -5px; z-index: 2;
+    width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: #fff; background: var(--ag-accent); border-radius: 50%;
+    box-shadow: 0 1px 4px color-mix(in srgb, #000 45%, transparent); pointer-events: none;
+}
+.ag-thumb-del {
+    display: none; position: absolute; right: -6px; top: -6px; z-index: 3;
+    width: 18px; height: 18px; align-items: center; justify-content: center;
+    border: 1.5px solid var(--ag-panel); border-radius: 50%; background: #e53935; color: #fff; font-size: 9px; cursor: pointer; padding: 0;
+    box-shadow: 0 1px 5px color-mix(in srgb, #000 45%, transparent);
+    transition: transform .12s, background .12s;
+}
+.ag-thumb-del:hover { transform: scale(1.18); background: #ff5252; }
+.ag-thumb-wrap:hover .ag-thumb-del { display: flex; }
 
-.aa-row input[type="range"] {
-    flex: 1;
-    accent-color: var(--SmartThemeQuoteColor, #ffb86c);
-    cursor: pointer;
-}
+/* ── Подвал / статус ── */
+.ag-foot { display: flex; justify-content: center; }
+#ag-modal .ag-upload { display: inline-flex; align-items: center; gap: 7px; border-radius: 10px; transition: background .15s, transform .12s, border-color .15s; }
+#ag-modal .ag-upload:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--ag-accent) 50%, transparent); }
+.ag-status { text-align: center; font-size: .78em; min-height: 16px; transition: color .2s; }
+.ag-status.ok { color: color-mix(in srgb, #4caf50 78%, var(--ag-text)); font-weight: 600; }
+.ag-status.warn { color: color-mix(in srgb, #ff9800 82%, var(--ag-text)); font-weight: 600; }
+.ag-status.wait { opacity: .7; }
 
-.aa-row .aa-value {
-    flex: 0 0 50px;
-    text-align: right;
-    font-size: 12px;
-    opacity: 0.7;
-    font-variant-numeric: tabular-nums;
+/* ── Настройки расширения ── */
+#ag-settings .inline-drawer-content { flex-direction: column; gap: 11px; }
+#ag-settings .ag-toggle { margin: 0; }
+#ag-settings .ag-mgr-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; border-radius: 10px; font-weight: 600;
+    border: 1px solid color-mix(in srgb, var(--ag-accent) 40%, transparent);
+    transition: border-color .15s, background .15s, transform .12s;
 }
+#ag-settings .ag-mgr-btn:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--ag-accent) 70%, transparent); background: color-mix(in srgb, var(--ag-accent) 12%, transparent); }
+#ag-settings .ag-mgr-btn i { color: var(--ag-accent); }
 
-.aa-panel-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
+/* компактные «факты»-лимиты */
+#ag-settings .ag-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+#ag-settings .ag-fact {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    padding: 10px 6px 9px; border-radius: 12px; text-align: center;
+    background: var(--ag-softer);
+    border: 1px solid var(--ag-line);
+    transition: border-color .15s, background .15s;
 }
+#ag-settings .ag-fact:hover { border-color: color-mix(in srgb, var(--ag-accent) 30%, var(--ag-line)); background: var(--ag-soft); }
+#ag-settings .ag-fact i { font-size: 1.05em; color: var(--ag-accent); opacity: .9; margin-bottom: 3px; }
+#ag-settings .ag-fact b { font-size: 1em; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+#ag-settings .ag-fact span { font-size: .72em; opacity: .58; line-height: 1.2; }
 
-.aa-btn {
-    flex: 1;
-    padding: 6px 10px;
-    border-radius: 6px;
-    border: 1px solid var(--SmartThemeBorderColor, #444);
-    background: transparent;
-    color: var(--SmartThemeBodyColor, #eee);
-    cursor: pointer;
-    font-size: 12px;
-    transition: all 0.15s ease;
+#ag-settings .ag-hint {
+    display: flex; align-items: flex-start; gap: 7px; margin: 0;
+    opacity: .6; font-size: .82em; line-height: 1.4;
 }
+#ag-settings .ag-hint i { color: var(--ag-accent); opacity: .85; margin-top: 1px; flex-shrink: 0; }
 
-.aa-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: var(--SmartThemeQuoteColor, #ffb86c);
+/* ── Менеджер аватарок ── */
+.agm-panel { width: min(700px, 95vw); }
+.agm-list { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: 72vh; padding: 2px 6px 2px 0; }
+.agm-list::-webkit-scrollbar { width: 9px; }
+.agm-list::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ag-text) 18%, transparent); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+.agm-entity {
+    border: 1px solid var(--ag-border);
+    border-radius: 13px;
+    padding: 12px 13px;
+    background: var(--ag-softer);
+    transition: border-color .15s, transform .12s, background .15s;
 }
+.agm-entity:hover { border-color: color-mix(in srgb, var(--ag-accent) 35%, var(--ag-border)); background: var(--ag-soft); }
+.agm-entity-head { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; font-weight: 600; font-size: .92em; }
+.agm-ic {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; flex-shrink: 0; border-radius: 8px; font-size: .82em;
+    color: var(--ag-accent);
+    background: color-mix(in srgb, var(--ag-accent) 15%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ag-accent) 26%, transparent);
+}
+.agm-entity-name { cursor: pointer; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color .15s; }
+.agm-entity-name:hover { text-decoration: underline; color: color-mix(in srgb, var(--ag-accent) 70%, var(--ag-text)); }
+.agm-entity-cnt {
+    flex-shrink: 0; opacity: .85; font-size: .76em; font-variant-numeric: tabular-nums;
+    padding: 1px 8px; border-radius: 999px;
+    background: var(--ag-soft); color: color-mix(in srgb, var(--ag-text) 70%, transparent);
+}
+.agm-entity-del {
+    flex-shrink: 0; width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: 8px; cursor: pointer;
+    background: var(--ag-soft);
+    color: color-mix(in srgb, var(--ag-text) 55%, transparent);
+    transition: background .15s, color .15s, transform .15s;
+}
+.agm-entity-del:hover { background: color-mix(in srgb, #e53935 32%, transparent); color: #fff; transform: scale(1.06); }
+.agm-strip { min-height: 60px; }
+.agm-strip .ag-thumb { cursor: pointer; }
+.agm-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    padding: 40px 14px; color: color-mix(in srgb, var(--ag-text) 45%, transparent); font-size: .88em; text-align: center;
+}
+.agm-empty i { font-size: 2.8em; opacity: .35; }
+.agm-empty small { opacity: .75; }
 
-.aa-btn.aa-btn-reset:hover {
-    background: rgba(255, 100, 100, 0.15);
-    border-color: #ff6464;
-}
-/* ── Мобильная адаптация панели ── */
-@media (max-width: 768px) {
-    .aa-panel {
-        /* Панель по центру внизу экрана, во всю ширину */
-        left: 50% !important;
-        top: auto !important;
-        bottom: 10px !important;
-        transform: translateX(-50%) !important;
-        width: calc(100vw - 20px) !important;
-        min-width: 0 !important;
-        max-width: 420px !important;
-        box-sizing: border-box !important;
+/* ── Узкие экраны / телефон ── */
+@media (max-width: 560px) {
+    #ag-modal, #agm-modal { padding: 8px; }
+    .ag-panel {
+        width: 100%; max-width: 100%;
+        max-height: calc(100vh - 16px);
+        max-height: calc(100svh - 16px);
+        padding: 14px 13px calc(12px + env(safe-area-inset-bottom, 0px));
+        gap: 12px;
     }
+    .agm-panel { width: 100%; }
+    .ag-head { gap: 8px; }
+    .ag-stage { gap: 8px; }
+    .ag-figure { width: min(240px, 56vw); }
+    .ag-arrow { width: 36px; height: 36px; }
+    /* кнопка действия — на всю ширину, счётчик над ней */
+    .ag-bar { flex-wrap: wrap; }
+    #ag-modal .ag-apply { flex: 1 1 100%; justify-content: center; }
+    #ag-modal .ag-upload { width: 100%; justify-content: center; }
+    .ag-thumb-wrap, .ag-thumb { width: 58px; height: 58px; }
+    /* один общий скролл панели вместо вложенного скролла списка */
+    .agm-list { max-height: none; overflow-y: visible; }
+    .agm-entity { padding: 11px 11px; }
+}
 
-    /* Крупнее ползунки — удобнее пальцем */
-    .aa-row input[type="range"] {
-        height: 26px !important;
-    }
+/* ── Сенсорные экраны: то, что обычно по наведению — делаем доступным по тапу ── */
+@media (hover: none) {
+    .ag-ov { opacity: .85; }
+    .ag-thumb-del { display: flex; }
+}
 
-    /* Крупнее кнопки Сбросить/Готово */
-    .aa-btn {
-        padding: 10px 12px !important;
-        font-size: 14px !important;
+/* ── Фикс для мобилок: окно фиксируем во viewport, а не в html ── */
+@media (max-width: 560px) {
+    #ag-modal, #agm-modal {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        height: 100dvh !important;
+        min-height: 100dvh;
     }
-
-    /* Шестерёнка на мобилке — крупнее и всегда чуть видна (нет hover) */
-    .mes > .aa-edit-btn {
-        width: 22px !important;
-        height: 22px !important;
-        font-size: 15px !important;
-        opacity: 0.55 !important;
-    }
-    .mes > .aa-edit-btn:hover,
-    .mes > .aa-edit-btn:active {
-        opacity: 1 !important;
+    .ag-panel {
+        margin: auto;
+        min-height: min-content;
     }
 }
