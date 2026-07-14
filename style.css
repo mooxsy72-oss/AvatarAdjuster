@@ -393,21 +393,3 @@
     .ag-ov.hoveronly { opacity: .85; pointer-events: auto; transform: none; }
     .ag-thumb-del { display: flex; }
 }
-
-
-/* ── Фикс для мобилок: окно фиксируем во viewport, а не в html ── */
-@media (max-width: 560px) {
-    #ag-modal, #agm-modal {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        height: 100dvh !important;
-        min-height: 100dvh;
-    }
-    .ag-panel {
-        margin: auto;
-        min-height: min-content;
-    }
-}
