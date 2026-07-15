@@ -283,7 +283,7 @@ async function applyToAllMatching(key) {
 }
 
 function ensureEditButton(avatarEl) {
-    // Ищем родительский .mes — на него вешаем кнопку
+    // Ищем родительский .mes — на него вешаем кнопку (у него нет overflow:hidden)
     const mesEl = avatarEl.closest('.mes');
     if (!mesEl) return;
     if (mesEl.querySelector(':scope > .aa-edit-btn')) return;
@@ -297,34 +297,13 @@ function ensureEditButton(avatarEl) {
     btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-
-    // Флаг, чтобы click не сработал дважды после touch
-    let handledByTouch = false;
-
-    const fireOpen = (e) => {
+    btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
         e.preventDefault();
         const img = avatarEl.querySelector(':scope > img');
         if (img) openPanel(img, btn, avatarEl);
-    };
-
-    // Тач: срабатываем на touchend прямо на кнопке
-    btn.addEventListener('touchend', (e) => {
-        handledByTouch = true;
-        fireOpen(e);
-        // сбрасываем флаг чуть позже, чтобы click не продублировал
-        setTimeout(() => { handledByTouch = false; }, 500);
-    }, { passive: false });
-
-    // Десктоп / резервный вариант
-    btn.addEventListener('click', (e) => {
-        if (handledByTouch) return;
-        fireOpen(e);
     });
-
     mesEl.appendChild(btn);
-}
-El.appendChild(btn);
 }
 
 
