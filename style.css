@@ -1,47 +1,63 @@
-/* ============ Плавающая кнопка-шестерёнка (в body, поверх всего) ============ */
-.aa-edit-btn.aa-floating {
-    position: fixed;
-    width: 30px;
-    height: 30px;
+/* ============ Иконка-шестерёнка ============ */
+.mes > .aa-edit-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.5);
+    background: transparent;
     color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: 13px;
     line-height: 1;
     cursor: pointer;
-    z-index: 2147483647;
+    opacity: 0.001;
+    transition: opacity 0.18s ease;
+    z-index: 99999 !important;
     pointer-events: auto;
     border: none;
-    backdrop-filter: blur(3px);
+    box-shadow: none;
+    backdrop-filter: none;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
-    -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
-    user-select: none;
-    touch-action: manipulation;
-    transition: transform 0.12s ease, opacity 0.15s ease;
-    opacity: 0.9;
 }
 
-.aa-edit-btn.aa-floating:hover {
+.mes > .aa-edit-btn::before {
+    content: "";
+    position: absolute;
+    top: -25px;
+    left: -25px;
+    right: -25px;
+    bottom: -25px;
+    background: transparent;
+    border-radius: 50%;
+    z-index: -1;
+}
+
+.mes > .aa-edit-btn:hover {
     opacity: 1;
     color: var(--SmartThemeQuoteColor, #ffb86c);
 }
 
-.aa-edit-btn.aa-floating:active {
-    transform: scale(0.9);
-    color: var(--SmartThemeQuoteColor, #ffb86c);
-}
+/* ── Мобильная адаптация: показываем шестерёнку по наличию тач-устройства ── */
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
+    .mes > .aa-edit-btn {
+        opacity: 0.65 !important;
+        width: 24px !important;
+        height: 24px !important;
+        font-size: 16px !important;
+        background: rgba(0, 0, 0, 0.35) !important;
+        border-radius: 50% !important;
+        backdrop-filter: blur(2px) !important;
+    }
 
-/* Расширенная зона нажатия */
-.aa-edit-btn.aa-floating::before {
-    content: "";
-    position: absolute;
-    inset: -14px;
-    border-radius: 50%;
-    pointer-events: auto;
+    .mes > .aa-edit-btn:hover,
+    .mes > .aa-edit-btn:active {
+        opacity: 1 !important;
+        color: var(--SmartThemeQuoteColor, #ffb86c) !important;
+    }
 }
 
 
@@ -82,6 +98,15 @@
     transition: transform 0.15s ease;
     pointer-events: none;
     z-index: 1;
+}
+
+
+
+
+/* Иконка и галерея — над оверлеем */
+.mes .avatar .aa-edit-btn,
+.mes .avatar .ag-ov {
+    z-index: 2;
 }
 
 
@@ -231,4 +256,23 @@
         padding: 8px 12px !important;
         font-size: 18px !important;
     }
+}
+.mes > .aa-edit-btn {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+/* ── FIX: отключаем родные touch-обработчики таверны под кнопкой ── */
+/* Аватарка и её img больше не перехватывают тап (зум/edit таверны),
+   но сама шестерёнка остаётся кликабельной */
+.mes .avatar {
+    pointer-events: none !important;
+}
+
+.mes > .aa-edit-btn,
+.mes .avatar > .aa-original-layer ~ *,
+.mes .aa-edit-btn {
+    pointer-events: auto !important;
+}
+.mes .avatar .ag-ov {
+    pointer-events: auto !important;
 }
