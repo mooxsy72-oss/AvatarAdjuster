@@ -110,66 +110,39 @@
 }
 
 
-/* ============ Панель редактирования (центрированная модалка) ============ */
-.aa-backdrop {
-    display: none !important;
-    position: fixed !important;
-    inset: 0 !important;
-    z-index: 2147483647 !important;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    background: color-mix(in srgb, var(--SmartThemeShadowColor, #000) 65%, transparent);
-    backdrop-filter: blur(4px);
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
-    pointer-events: auto !important;
-}
-
-.aa-backdrop.open {
-    display: flex !important;
-    animation: aa-fade-in 0.18s ease;
-}
-
-
+/* ============ Панель редактирования ============ */
 .aa-panel {
-    position: relative;
-    pointer-events: auto !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    width: min(360px, 94vw);
-    max-height: 88vh;
-    max-height: 88svh;
-    overflow-y: auto;
+    position: fixed;
+    z-index: 10000;
     background: var(--SmartThemeBlurTintColor, #1a1a1a);
     backdrop-filter: blur(10px);
     border: 1px solid var(--SmartThemeBorderColor, #444);
-    border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    border-radius: 10px;
+    padding: 14px;
+    min-width: 280px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
     color: var(--SmartThemeBodyColor, #eee);
     font-family: var(--mainFontFamily, sans-serif);
     font-size: 13px;
     user-select: none;
-    animation: aa-pop 0.2s cubic-bezier(.34, 1.18, .64, 1);
+    animation: aa-fade-in 0.18s ease;
 }
 
 @keyframes aa-fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
-
-@keyframes aa-pop {
-    from { opacity: 0; transform: translateY(14px) scale(.97); }
-    to   { opacity: 1; transform: none; }
+@keyframes aa-fade-in-mobile {
+    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 .aa-panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
     font-weight: bold;
     font-size: 13px;
@@ -186,8 +159,8 @@
 
 .aa-panel-close {
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 6px;
+    padding: 2px 6px;
+    border-radius: 4px;
     transition: background 0.15s ease;
     flex-shrink: 0;
 }
@@ -199,8 +172,8 @@
 .aa-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: 8px;
+    margin-bottom: 8px;
 }
 
 .aa-row label {
@@ -213,24 +186,31 @@
     flex: 1;
     accent-color: var(--SmartThemeQuoteColor, #ffb86c);
     cursor: pointer;
-    height: 24px;
+}
+
+.aa-row .aa-value {
+    flex: 0 0 50px;
+    text-align: right;
+    font-size: 12px;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
 }
 
 .aa-panel-actions {
     display: flex;
     gap: 8px;
-    margin-top: 14px;
+    margin-top: 12px;
 }
 
 .aa-btn {
     flex: 1;
-    padding: 10px 10px;
-    border-radius: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
     border: 1px solid var(--SmartThemeBorderColor, #444);
     background: transparent;
     color: var(--SmartThemeBodyColor, #eee);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     transition: all 0.15s ease;
 }
 
@@ -243,29 +223,39 @@
     background: rgba(255, 100, 100, 0.15);
     border-color: #ff6464;
 }
-
-/* ── Мобильная адаптация панели: прижимаем к низу, крупные кнопки ── */
+/* ── Мобильная адаптация панели ── */
 @media (hover: none), (pointer: coarse), (max-width: 768px) {
-    .aa-backdrop {
-        align-items: flex-end;
-        padding: 8px;
+    .aa-panel {
+        left: 50% !important;
+        right: auto !important;
+        top: auto !important;
+        bottom: 12px !important;
+        transform: translateX(-50%) !important;
+        width: calc(100vw - 20px) !important;
+        min-width: 0 !important;
+        max-width: 420px !important;
+        box-sizing: border-box !important;
+        z-index: 100000 !important;
+        max-height: 70vh !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        animation: aa-fade-in-mobile 0.18s ease !important;
     }
 
-    .aa-panel {
-        width: 100%;
-        max-width: 480px;
-        margin: 0 auto;
-        max-height: 80vh;
-        max-height: 80svh;
-        padding: 16px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+
+    .aa-panel-header {
+        position: sticky;
+        top: 0;
+        background: var(--SmartThemeBlurTintColor, #1a1a1a);
+        z-index: 2;
     }
 
     .aa-row input[type="range"] {
-        height: 32px !important;
+        height: 30px !important;
     }
 
     .aa-btn {
-        padding: 14px 12px !important;
+        padding: 12px 12px !important;
         font-size: 15px !important;
     }
 
@@ -274,23 +264,7 @@
         font-size: 18px !important;
     }
 }
-
 .mes > .aa-edit-btn {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-}
-/* ── FIX: отключаем родные touch-обработчики таверны под кнопкой ── */
-/* Аватарка и её img больше не перехватывают тап (зум/edit таверны),
-   но сама шестерёнка остаётся кликабельной */
-.mes .avatar {
-    pointer-events: none !important;
-}
-
-.mes > .aa-edit-btn,
-.mes .avatar > .aa-original-layer ~ *,
-.mes .aa-edit-btn {
-    pointer-events: auto !important;
-}
-.mes .avatar .ag-ov {
-    pointer-events: auto !important;
 }
