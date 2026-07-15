@@ -1,5 +1,5 @@
 /* ============ Иконка-шестерёнка ============ */
-.mes > .aa-edit-btn {
+.mes .aa-edit-btn {
     position: absolute;
     top: 8px;
     left: 8px;
@@ -16,15 +16,16 @@
     cursor: pointer;
     opacity: 0.001;
     transition: opacity 0.18s ease;
-    z-index: 99999 !important;
-    pointer-events: auto;
+    z-index: 2147483647 !important;
+    pointer-events: auto !important;
     border: none;
     box-shadow: none;
     backdrop-filter: none;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
 }
 
-.mes > .aa-edit-btn::before {
+
+.mes .aa-edit-btn::before {
     content: "";
     position: absolute;
     top: -25px;
@@ -36,29 +37,33 @@
     z-index: -1;
 }
 
-.mes > .aa-edit-btn:hover {
+.mes .aa-edit-btn:hover {
     opacity: 1;
     color: var(--SmartThemeQuoteColor, #ffb86c);
 }
 
 /* ── Мобильная адаптация: показываем шестерёнку по наличию тач-устройства ── */
+/* ── Мобильная адаптация: показываем шестерёнку по наличию тач-устройства ── */
 @media (hover: none), (pointer: coarse), (max-width: 768px) {
-    .mes > .aa-edit-btn {
+    .mes .aa-edit-btn {
         opacity: 0.65 !important;
-        width: 24px !important;
-        height: 24px !important;
+        width: 28px !important;
+        height: 28px !important;
         font-size: 16px !important;
-        background: rgba(0, 0, 0, 0.35) !important;
+        background: rgba(0, 0, 0, 0.5) !important;
         border-radius: 50% !important;
         backdrop-filter: blur(2px) !important;
+        z-index: 2147483647 !important;
+        pointer-events: auto !important;
     }
 
-    .mes > .aa-edit-btn:hover,
-    .mes > .aa-edit-btn:active {
+    .mes .aa-edit-btn:hover,
+    .mes .aa-edit-btn:active {
         opacity: 1 !important;
         color: var(--SmartThemeQuoteColor, #ffb86c) !important;
     }
 }
+
 
 
 /* ============ Оверлей с оригиналом ============ */
@@ -257,7 +262,18 @@
         font-size: 18px !important;
     }
 }
-.mes > .aa-edit-btn {
+.mes .aa-edit-btn {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
 }
+/* ── Гарантия кликабельности над декоративными слоями тем ── */
+.mesAvatarWrapper > .aa-edit-btn {
+    z-index: 2147483647 !important;
+    pointer-events: auto !important;
+}
+/* На случай если тема ставит pointer-events:none на всю обёртку —
+   возвращаем события самой кнопке */
+.mesAvatarWrapper {
+    pointer-events: auto;
+}
+
