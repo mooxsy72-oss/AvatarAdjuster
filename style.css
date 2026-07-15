@@ -41,24 +41,28 @@
     color: var(--SmartThemeQuoteColor, #ffb86c);
 }
 
-/* ── Мобильная адаптация: показываем шестерёнку по наличию тач-устройства ── */
-@media (hover: none), (pointer: coarse), (max-width: 768px) {
+/* ── Мобильная адаптация: невзрачная шестерёнка по центру слева ── */
+@media (max-width: 768px) {
     .mes > .aa-edit-btn {
-        opacity: 0.65 !important;
-        width: 24px !important;
-        height: 24px !important;
-        font-size: 16px !important;
-        background: rgba(0, 0, 0, 0.35) !important;
+        top: 50% !important;
+        left: 6px !important;
+        transform: translateY(-50%) !important;
+        opacity: 0.28 !important;
+        width: 22px !important;
+        height: 22px !important;
+        font-size: 14px !important;
+        background: rgba(0, 0, 0, 0.25) !important;
         border-radius: 50% !important;
-        backdrop-filter: blur(2px) !important;
+        backdrop-filter: blur(1px) !important;
+        text-shadow: none !important;
     }
 
-    .mes > .aa-edit-btn:hover,
     .mes > .aa-edit-btn:active {
-        opacity: 1 !important;
+        opacity: 0.9 !important;
         color: var(--SmartThemeQuoteColor, #ffb86c) !important;
     }
 }
+
 
 
 /* ============ Оверлей с оригиналом ============ */
@@ -95,13 +99,14 @@
         translate(var(--aa-x, 0px), var(--aa-y, 0px))
         rotate(var(--aa-rotate, 0deg))
         scale(var(--aa-scale, 1));
-    transition: transform 0.15s ease;
+    transition: none;
     pointer-events: none;
     z-index: 1;
 }
 
-
-
+.mes .avatar > .aa-original-layer.aa-animating {
+    transition: transform 0.15s ease;
+}
 
 /* Иконка и галерея — над оверлеем */
 .mes .avatar .aa-edit-btn,
