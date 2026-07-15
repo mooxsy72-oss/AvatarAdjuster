@@ -283,26 +283,32 @@ async function applyToAllMatching(key) {
 }
 
 function ensureEditButton(avatarEl) {
-    const mesEl = avatarEl.closest('.mes');
-    if (!mesEl) return;
-    if (mesEl.querySelector(':scope > .aa-edit-btn')) return;
+    // Вешаем кнопку прямо на .mesAvatarWrapper (он есть во всех темах),
+    // а не на .mes — так её не перекроет .mes_block
+    const wrapper = avatarEl.closest('.mesAvatarWrapper') || avatarEl;
+    if (wrapper.querySelector(':scope > .aa-edit-btn')) return;
 
-    const computed = window.getComputedStyle(mesEl);
+    const computed = window.getComputedStyle(wrapper);
     if (computed.position === 'static') {
-        mesEl.style.position = 'relative';
+        wrapper.style.position = 'relative';
     }
 
     const btn = document.createElement('div');
     btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-    btn.addEventListener('pointerup', (e) => {
+
+    const openIt = (e) => {
         e.stopPropagation();
         e.preventDefault();
         const img = avatarEl.querySelector(':scope > img');
         if (img) openPanel(img, btn, avatarEl);
-    });
-    mesEl.appendChild(btn);
+    };
+
+    btn.addEventListener('click', openIt);
+    btn.addEventListener('touchend', openIt, { passive: false });
+
+    wrapper.appendChild(btn);
 }
 
 
