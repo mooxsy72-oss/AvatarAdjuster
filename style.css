@@ -225,24 +225,6 @@
 }
 /* ── Мобильная адаптация панели ── */
 @media (hover: none), (pointer: coarse), (max-width: 768px) {
-    .aa-panel {
-        left: 50% !important;
-        right: auto !important;
-        top: auto !important;
-        bottom: 12px !important;
-        transform: translateX(-50%) !important;
-        width: calc(100vw - 20px) !important;
-        min-width: 0 !important;
-        max-width: 420px !important;
-        box-sizing: border-box !important;
-        z-index: 100000 !important;
-        max-height: 70vh !important;
-        overflow-y: auto !important;
-        -webkit-overflow-scrolling: touch !important;
-        animation: aa-fade-in-mobile 0.18s ease !important;
-    }
-
-
     .aa-panel-header {
         position: sticky;
         top: 0;
