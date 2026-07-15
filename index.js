@@ -282,43 +282,80 @@ async function applyToAllMatching(key) {
     }
 }
 
-function ensureEditButton(avatarEl) {
-    // Вешаем кнопку прямо на .mesAvatarWrapper (он есть во всех темах),
-    // а не на .mes — так её не перекроет .mes_block
-    const wrapper = avatarEl.closest('.mesAvatarWrapper') || avatarEl;
-    if (wrapper.querySelector(':scope > .aa-edit-btn')) return;
+function processChatAvatars() {
+    document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
+        applyToAvatarEl(avatarEl);
+    });
+}
+// ---- Плавающая кнопка в body (поверх всех тем) ----
+let floatingBtn = null;
+let floatingTargetAvatar = null;
+let hideBtnTimer = null;
 
-    const computed = window.getComputedStyle(wrapper);
-    if (computed.position === 'static') {
-        wrapper.style.position = 'relative';
-    }
+function ensureFloatingButton() {
+    if (floatingBtn) return floatingBtn;
 
     const btn = document.createElement('div');
-    btn.className = 'aa-edit-btn';
+    btn.className = 'aa-edit-btn aa-floating';
     btn.title = 'Редактировать аватарку';
-    btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
+    btn.style.display = 'none';
 
     const openIt = (e) => {
         e.stopPropagation();
         e.preventDefault();
-        const img = avatarEl.querySelector(':scope > img');
-        if (img) openPanel(img, btn, avatarEl);
+        if (!floatingTargetAvatar) return;
+        const img = floatingTargetAvatar.querySelector(':scope > img');
+        if (img) openPanel(img, btn, floatingTargetAvatar);
     };
 
     btn.addEventListener('click', openIt);
     btn.addEventListener('touchend', openIt, { passive: false });
 
-    wrapper.appendChild(btn);
+    document.body.appendChild(btn);
+    floatingBtn = btn;
+    return btn;
 }
 
+function positionFloatingButton(avatarEl) {
+    const btn = ensureFloatingButton();
+    floatingTargetAvatar = avatarEl;
+    const rect = avatarEl.getBoundingClientRect();
+    btn.style.display = 'flex';
+    btn.style.left = `${rect.left + 10}px`;
+    btn.style.top = `${rect.top + 10}px`;
+}
 
+function hideFloatingButtonSoon() {
+    clearTimeout(hideBtnTimer);
+    hideBtnTimer = setTimeout(() => {
+        if (floatingBtn) floatingBtn.style.display = 'none';
+        floatingTargetAvatar = null;
+    }, 2500);
+}
 
+function initFloatingButton() {
+    const chat = document.getElementById('chat');
+    if (!chat) return;
 
-function processChatAvatars() {
-    document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
-        ensureEditButton(avatarEl);
-        applyToAvatarEl(avatarEl);
-    });
+    // Наведение/касание аватарки — показать кнопку у этой аватарки
+    const onEnter = (e) => {
+        const avatarEl = e.target.closest('#chat .mes .avatar');
+        if (avatarEl) {
+            clearTimeout(hideBtnTimer);
+            positionFloatingButton(avatarEl);
+        }
+    };
+
+    chat.addEventListener('pointerover', onEnter, true);
+    chat.addEventListener('touchstart', onEnter, { capture: true, passive: true });
+
+    // Прячем кнопку при скролле чата и уводе пальца
+    chat.addEventListener('scroll', () => {
+        if (floatingBtn) floatingBtn.style.display = 'none';
+        floatingTargetAvatar = null;
+    }, { passive: true });
+
+    chat.addEventListener('pointerleave', hideFloatingButtonSoon, true);
 }
 
 // ---- Панель ----
@@ -561,5 +598,6 @@ function initObserver() {
 jQuery(async () => {
     initSettings();
     initObserver();
+    initFloatingButton();
     log('loaded');
 });
