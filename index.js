@@ -325,8 +325,12 @@ function closePanel() {
         currentPanel = null;
         document.removeEventListener('mousedown', onOutsideClick);
         document.removeEventListener('touchstart', onOutsideClick);
+        // выключаем плавность после закрытия панели
+        document.querySelectorAll('#chat .mes .avatar > .aa-original-layer.aa-animating')
+            .forEach(l => l.classList.remove('aa-animating'));
     }
 }
+
 
 function onOutsideClick(e) {
     if (Date.now() - panelOpenedAt < 400) return;
@@ -501,9 +505,13 @@ async function openPanel(img, anchorBtn, avatarEl) {
             const val = parseInt(input.value, 10);
             state[prop] = val;
             saveAvatarSettings(key, state);
+            // включаем плавность только на время активной настройки
+            document.querySelectorAll('#chat .mes .avatar > .aa-original-layer')
+                .forEach(l => l.classList.add('aa-animating'));
             await applyToAllMatching(key);
         });
     });
+
 
 
     resetBtn.addEventListener('click', async () => {
