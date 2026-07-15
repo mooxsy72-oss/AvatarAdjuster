@@ -17,23 +17,30 @@
     opacity: 0.001;
     transition: opacity 0.18s ease;
     z-index: 99999 !important;
-    pointer-events: auto;
+    pointer-events: auto !important;
     border: none;
     box-shadow: none;
     backdrop-filter: none;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+    /* ↓ ключевое: запрет выделения и корректная обработка тапов */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+    touch-action: manipulation;
 }
 
+/* Расширяем невидимую зону нажатия — легче попасть пальцем */
 .mes > .aa-edit-btn::before {
     content: "";
     position: absolute;
-    top: -25px;
-    left: -25px;
-    right: -25px;
-    bottom: -25px;
+    top: -18px;
+    left: -18px;
+    right: -18px;
+    bottom: -18px;
     background: transparent;
     border-radius: 50%;
     z-index: -1;
+    pointer-events: auto;
 }
 
 .mes > .aa-edit-btn:hover {
@@ -41,24 +48,27 @@
     color: var(--SmartThemeQuoteColor, #ffb86c);
 }
 
-/* ── Мобильная адаптация: показываем шестерёнку по наличию тач-устройства ── */
+/* ── Мобильная адаптация ── */
 @media (hover: none), (pointer: coarse), (max-width: 768px) {
     .mes > .aa-edit-btn {
         opacity: 0.65 !important;
-        width: 24px !important;
-        height: 24px !important;
+        width: 28px !important;
+        height: 28px !important;
         font-size: 16px !important;
         background: rgba(0, 0, 0, 0.35) !important;
         border-radius: 50% !important;
         backdrop-filter: blur(2px) !important;
+        pointer-events: auto !important;
+        z-index: 99999 !important;
     }
 
-    .mes > .aa-edit-btn:hover,
     .mes > .aa-edit-btn:active {
         opacity: 1 !important;
         color: var(--SmartThemeQuoteColor, #ffb86c) !important;
+        transform: scale(0.92);
     }
 }
+
 
 
 /* ============ Оверлей с оригиналом ============ */
