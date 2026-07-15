@@ -282,80 +282,53 @@ async function applyToAllMatching(key) {
     }
 }
 
-function processChatAvatars() {
-    document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
-        applyToAvatarEl(avatarEl);
-    });
-}
-// ---- Плавающая кнопка в body (поверх всех тем) ----
-let floatingBtn = null;
-let floatingTargetAvatar = null;
-let hideBtnTimer = null;
+function ensureEditButton(avatarEl) {
+    // Ищем родительский .mes — на него вешаем кнопку (у него нет overflow:hidden)
+    const mesEl = avatarEl.closest('.mes');
+    if (!mesEl) return;
+    if (mesEl.querySelector(':scope > .aa-edit-btn')) return;
 
-function ensureFloatingButton() {
-    if (floatingBtn) return floatingBtn;
+    const computed = window.getComputedStyle(mesEl);
+    if (computed.position === 'static') {
+        mesEl.style.position = 'relative';
+    }
 
     const btn = document.createElement('div');
-    btn.className = 'aa-edit-btn aa-floating';
+    btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
-    btn.style.display = 'none';
-
-    const openIt = (e) => {
+    btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
+    const handleActivate = (e) => {
         e.stopPropagation();
+        e.stopImmediatePropagation();
         e.preventDefault();
-        if (!floatingTargetAvatar) return;
-        const img = floatingTargetAvatar.querySelector(':scope > img');
-        if (img) openPanel(img, btn, floatingTargetAvatar);
+        const img = avatarEl.querySelector(':scope > img');
+        if (img) openPanel(img, btn, avatarEl);
     };
 
-    btn.addEventListener('click', openIt);
-    btn.addEventListener('touchend', openIt, { passive: false });
+    // touchend в capture-фазе — ловим тап РАНЬШЕ родных обработчиков таверны
+    let touchHandled = false;
+    btn.addEventListener('touchend', (e) => {
+        touchHandled = true;
+        handleActivate(e);
+        // сбрасываем флаг, чтобы последующий синтетический click не дублировал
+        setTimeout(() => { touchHandled = false; }, 500);
+    }, { capture: true, passive: false });
 
-    document.body.appendChild(btn);
-    floatingBtn = btn;
-    return btn;
+    // pointerup — для мыши/ПК (если тач уже обработал — пропускаем)
+    btn.addEventListener('pointerup', (e) => {
+        if (touchHandled) return;
+        if (e.pointerType === 'touch') return; // тач идёт через touchend
+        handleActivate(e);
+    }, { capture: true });
+    mesEl.appendChild(btn);
 }
 
-function positionFloatingButton(avatarEl) {
-    const btn = ensureFloatingButton();
-    floatingTargetAvatar = avatarEl;
-    const rect = avatarEl.getBoundingClientRect();
-    btn.style.display = 'flex';
-    btn.style.left = `${rect.left + 10}px`;
-    btn.style.top = `${rect.top + 10}px`;
-}
 
-function hideFloatingButtonSoon() {
-    clearTimeout(hideBtnTimer);
-    hideBtnTimer = setTimeout(() => {
-        if (floatingBtn) floatingBtn.style.display = 'none';
-        floatingTargetAvatar = null;
-    }, 2500);
-}
-
-function initFloatingButton() {
-    const chat = document.getElementById('chat');
-    if (!chat) return;
-
-    // Наведение/касание аватарки — показать кнопку у этой аватарки
-    const onEnter = (e) => {
-        const avatarEl = e.target.closest('#chat .mes .avatar');
-        if (avatarEl) {
-            clearTimeout(hideBtnTimer);
-            positionFloatingButton(avatarEl);
-        }
-    };
-
-    chat.addEventListener('pointerover', onEnter, true);
-    chat.addEventListener('touchstart', onEnter, { capture: true, passive: true });
-
-    // Прячем кнопку при скролле чата и уводе пальца
-    chat.addEventListener('scroll', () => {
-        if (floatingBtn) floatingBtn.style.display = 'none';
-        floatingTargetAvatar = null;
-    }, { passive: true });
-
-    chat.addEventListener('pointerleave', hideFloatingButtonSoon, true);
+function processChatAvatars() {
+    document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
+        ensureEditButton(avatarEl);
+        applyToAvatarEl(avatarEl);
+    });
 }
 
 // ---- Панель ----
@@ -598,6 +571,5 @@ function initObserver() {
 jQuery(async () => {
     initSettings();
     initObserver();
-    initFloatingButton();
     log('loaded');
 });
