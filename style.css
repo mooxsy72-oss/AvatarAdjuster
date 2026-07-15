@@ -108,6 +108,9 @@
 .mes .avatar > .aa-original-layer.aa-animating {
     transition: transform 0.15s ease;
 }
+.mes .avatar > .aa-original-layer.aa-instant {
+    transition: none !important;
+}
 
 /* Иконка и галерея — над оверлеем */
 .mes .avatar .aa-edit-btn,
