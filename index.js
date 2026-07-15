@@ -320,6 +320,22 @@ async function applyToAllMatching(key) {
         }
     }
 }
+// Быстрое применение только CSS-переменных к слоям (без сети, размеров, сохранения).
+// Используется при активном движении ползунков — чтобы не лагало на мобилке.
+function fastApplyMatching(key, settings) {
+    const avatars = document.querySelectorAll('#chat .mes .avatar');
+    avatars.forEach(avatarEl => {
+        const img = avatarEl.querySelector(':scope > img');
+        if (!img) return;
+        if (getAvatarKey(img.getAttribute('src')) !== key) return;
+        const layer = avatarEl.querySelector(':scope > .aa-original-layer');
+        if (!layer) return;
+        layer.style.setProperty('--aa-scale', (settings.scale / 100).toString());
+        layer.style.setProperty('--aa-x', `${settings.x}px`);
+        layer.style.setProperty('--aa-y', `${settings.y}px`);
+        layer.style.setProperty('--aa-rotate', `${settings.rotate}deg`);
+    });
+}
 
 function ensureEditButton(avatarEl) {
     // Ищем родительский .mes — на него вешаем кнопку (у него нет overflow:hidden)
@@ -547,20 +563,35 @@ async function openPanel(img, anchorBtn, avatarEl) {
     // На мобилке позицию задаёт CSS-медиазапрос (bottom по центру) — JS координаты не трогаем
 
 
+    let saveTimer = null;
     panel.querySelectorAll('input[type="range"]').forEach(input => {
-        input.addEventListener('input', async () => {
+        input.addEventListener('input', () => {
             const prop = input.dataset.prop;
             const val = parseInt(input.value, 10);
             state[prop] = val;
-            saveAvatarSettings(key, state);
-            // включаем плавность и снимаем мгновенный режим на время активной настройки
+
+            // Мгновенно и дёшево двигаем слой (только CSS-переменные).
+            // На время настройки — плавность выключаем, чтобы transition не грузил моб.
             document.querySelectorAll('#chat .mes .avatar > .aa-original-layer')
-                .forEach(l => { l.classList.remove('aa-instant'); l.classList.add('aa-animating'); });
+                .forEach(l => { l.classList.remove('aa-animating'); l.classList.add('aa-instant'); });
+            fastApplyMatching(key, state);
+
+            // Тяжёлое (сохранение + пересчёт границ) — с задержкой, только когда
+            // пользователь притормозил движение ползунка.
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(async () => {
+                saveAvatarSettings(key, state);
+                await applyToAllMatching(key);
+            }, 220);
+        });
+
+        // Когда отпустил ползунок — финальное сохранение и точный пересчёт границ.
+        input.addEventListener('change', async () => {
+            clearTimeout(saveTimer);
+            saveAvatarSettings(key, state);
             await applyToAllMatching(key);
         });
     });
-
-
 
 
     resetBtn.addEventListener('click', async () => {
