@@ -274,6 +274,23 @@ async function applyToAvatarEl(avatarEl) {
         layer.style.backgroundImage = desiredBg;
     }
 
+    // Если это НЕ ручная настройка ползунками — ставим класс мгновенного применения,
+    // чтобы новое сообщение не проигрывало анимацию (особенно важно на мобилке,
+    // где reflow-хак ненадёжен).
+    const animating = layer.classList.contains('aa-animating');
+    if (!animating) {
+        layer.classList.add('aa-instant');
+    }
+
+    // Трансформации через CSS-переменные на слое
+    layer.style.setProperty('--aa-scale', (settings.scale / 100).toString());
+    layer.style.setProperty('--aa-x', `${settings.x}px`);
+    layer.style.setProperty('--aa-y', `${settings.y}px`);
+    layer.style.setProperty('--aa-rotate', `${settings.rotate}deg`);
+
+    // Теперь координаты применены — показываем слой (до этого он был opacity:0,
+    // чтобы не мелькнуть в позиции по умолчанию = микро-прыжок на мобилке).
+    layer.classList.add('aa-ready');
     // ── Считаем реальные размеры и зажимаем сдвиг по границам ──
     const imgSize = await getImageSize(originalUrl);
     const rect = avatarEl.getBoundingClientRect();
@@ -292,21 +309,6 @@ async function applyToAvatarEl(avatarEl) {
         // Сохраняем скорректированные значения обратно
         saveAvatarSettings(key, settings);
     }
-
-    // Если это НЕ ручная настройка ползунками — ставим класс мгновенного применения,
-    // чтобы новое сообщение не проигрывало анимацию (особенно важно на мобилке,
-    // где reflow-хак ненадёжен).
-    const animating = layer.classList.contains('aa-animating');
-    if (!animating) {
-        layer.classList.add('aa-instant');
-    }
-
-    // Трансформации через CSS-переменные на слое
-    layer.style.setProperty('--aa-scale', (settings.scale / 100).toString());
-    layer.style.setProperty('--aa-x', `${settings.x}px`);
-    layer.style.setProperty('--aa-y', `${settings.y}px`);
-    layer.style.setProperty('--aa-rotate', `${settings.rotate}deg`);
-
 }
 
 
