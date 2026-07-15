@@ -283,41 +283,25 @@ async function applyToAllMatching(key) {
 }
 
 function ensureEditButton(avatarEl) {
-    // Кнопку вешаем НЕ внутрь сообщения (там мешают оверлеи тем),
-    // а в document.body — самый верхний слой. Позицию считаем по аватарке.
     const wrapper = avatarEl.closest('.mesAvatarWrapper') || avatarEl;
     if (!wrapper) return;
+    if (wrapper.querySelector(':scope > .aa-edit-btn')) return;
 
-    // Уже создавали для этой аватарки? Тогда выходим.
-    if (wrapper.dataset.aaBtnLinked === '1') return;
-    wrapper.dataset.aaBtnLinked = '1';
+    const computed = window.getComputedStyle(wrapper);
+    if (computed.position === 'static') {
+        wrapper.style.position = 'relative';
+    }
 
     const btn = document.createElement('div');
-    btn.className = 'aa-edit-btn aa-edit-btn-floating';
+    btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-
-    // Связываем кнопку с её аватаркой (чтобы потом находить пару)
+    // Кнопку связываем с её аватаркой — понадобится для делегирования
     btn._aaAvatarEl = avatarEl;
-    btn._aaWrapper = wrapper;
 
-    const handler = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        const img = avatarEl.querySelector(':scope > img');
-        if (img) openPanel(img, btn, avatarEl);
-    };
-    btn.addEventListener('pointerup', handler);
-    btn.addEventListener('click', handler);
-
-    document.body.appendChild(btn);
-
-    // Запоминаем кнопку, чтобы обновлять её позицию и удалять
-    aaFloatingButtons.push(btn);
-
-    // Сразу поставим на место
-    positionFloatingButton(btn);
+    wrapper.appendChild(btn);
 }
+
 
 // Список всех «плавающих» кнопок
 const aaFloatingButtons = [];
@@ -601,18 +585,25 @@ jQuery(async () => {
     initSettings();
     initObserver();
 
-    // Обновляем позиции плавающих кнопок при скролле и ресайзе
-    const scheduleReposition = (() => {
-        let raf = false;
-        return () => {
-            if (raf) return;
-            raf = true;
-            requestAnimationFrame(() => {
-                raf = false;
-                updateAllFloatingButtons();
-            });
-        };
-    })();
+    // ── Делегирование: один обработчик на весь документ ──
+    // Ловим тап/клик по кнопке где угодно, независимо от темы.
+    const openFromEvent = (e) => {
+        const btn = e.target.closest('.aa-edit-btn');
+        if (!btn) return;
+        e.stopPropagation();
+        e.preventDefault();
+        const avatarEl = btn._aaAvatarEl;
+        if (!avatarEl) return;
+        const img = avatarEl.querySelector(':scope > img');
+        if (img) openPanel(img, btn, avatarEl);
+    };
+
+    // click работает и на мыши, и на тач-тапе — самый надёжный вариант
+    document.addEventListener('click', openFromEvent, true);
+
+    log('loaded');
+});
+
 
     // Скролл внутри чата
     const chatEl = document.getElementById('chat');
