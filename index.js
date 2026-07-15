@@ -354,11 +354,30 @@ function updateAllFloatingButtons() {
 
 
 function processChatAvatars() {
-    document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
+    const avatars = document.querySelectorAll('#chat .mes .avatar');
+
+    // ВРЕМЕННАЯ ДИАГНОСТИКА — плашка со счётчиком в углу экрана
+    let dbg = document.getElementById('aa-debug-panel');
+    if (!dbg) {
+        dbg = document.createElement('div');
+        dbg.id = 'aa-debug-panel';
+        dbg.style.cssText =
+            'position:fixed;top:4px;right:4px;z-index:2147483647;' +
+            'background:rgba(0,0,0,0.85);color:#0f0;font:12px monospace;' +
+            'padding:6px 8px;border-radius:6px;pointer-events:none;max-width:60vw;';
+        document.body.appendChild(dbg);
+    }
+    const wrappers = document.querySelectorAll('#chat .mes .mesAvatarWrapper');
+    const buttons = document.querySelectorAll('.aa-edit-btn-floating');
+    dbg.textContent =
+        `avatar: ${avatars.length} | wrapper: ${wrappers.length} | btn: ${buttons.length}`;
+
+    avatars.forEach(avatarEl => {
         ensureEditButton(avatarEl);
         applyToAvatarEl(avatarEl);
     });
 }
+
 
 // ---- Панель ----
 let currentPanel = null;
