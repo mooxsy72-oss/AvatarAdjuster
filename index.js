@@ -297,19 +297,28 @@ function ensureEditButton(avatarEl) {
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
 
-    const openIt = (e, evName) => {
-        if (e) { e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault(); }
-        // ВРЕМЕННЫЙ ЛОГ — покажет какое событие сработало
-        if (window.toastr) toastr.info('event: ' + evName, 'AvatarAdjuster');
+    // Гасим всплытие, чтобы родные обработчики ST не реагировали
+    ['mousedown', 'touchstart', 'pointerdown'].forEach(t =>
+        btn.addEventListener(t, (e) => e.stopPropagation()));
+
+    let touchFired = false;
+    const openIt = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
         const img = avatarEl.querySelector(':scope > img');
         if (img) openPanel(img, btn, avatarEl);
     };
 
-    // Вешаем ВСЕ возможные события в capture-фазе, чтобы понять что доходит
-    btn.addEventListener('touchstart', (e) => openIt(e, 'touchstart'), { capture: true, passive: false });
-    btn.addEventListener('touchend',   (e) => openIt(e, 'touchend'),   { capture: true, passive: false });
-    btn.addEventListener('pointerup',  (e) => openIt(e, 'pointerup'),  { capture: true });
-    btn.addEventListener('click',      (e) => openIt(e, 'click'),      { capture: true });
+    btn.addEventListener('touchend', (e) => {
+        touchFired = true;
+        openIt(e);
+        setTimeout(() => { touchFired = false; }, 500);
+    }, { passive: false });
+
+    btn.addEventListener('click', (e) => {
+        if (touchFired) return; // на мобилке уже обработали через touchend
+        openIt(e);
+    });
 
     mesEl.appendChild(btn);
 }
@@ -338,7 +347,7 @@ function closePanel() {
 }
 
 function onOutsideClick(e) {
-    if (Date.now() - panelOpenedAt < 400) return;
+    if (Date.now() - panelOpenedAt < 600) return;
     if (currentPanel && !currentPanel.contains(e.target) && !e.target.closest('.aa-edit-btn')) {
         closePanel();
     }
@@ -404,6 +413,10 @@ async function openPanel(img, anchorBtn, avatarEl) {
 
     const panel = document.createElement('div');
     panel.className = 'aa-panel';
+
+
+    ['mousedown', 'touchstart', 'pointerdown', 'click'].forEach(t =>
+        panel.addEventListener(t, (e) => e.stopPropagation()));
 
     const header = document.createElement('div');
     header.className = 'aa-panel-header';
