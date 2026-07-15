@@ -258,3 +258,9 @@
         font-size: 18px !important;
     }
 }
+.mes_block {
+    outline: 3px solid red !important;
+}
+.mesAvatarWrapper {
+    outline: 3px solid lime !important;
+}
