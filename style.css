@@ -1,8 +1,10 @@
 /* ============ Иконка-шестерёнка ============ */
 .mes > .aa-edit-btn {
     position: absolute;
-    top: 8px;
+    /* Центр по вертикали относительно аватарки */
+    top: 25px;              /* половина высоты аватарки (обычно 50px → 25px) */
     left: 8px;
+    transform: translateY(-50%);
     width: 16px;
     height: 16px;
     border-radius: 50%;
@@ -62,7 +64,6 @@
         color: var(--SmartThemeQuoteColor, #ffb86c) !important;
     }
 }
-
 
 
 
