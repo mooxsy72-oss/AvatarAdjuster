@@ -463,11 +463,21 @@ async function openPanel(img, anchorBtn, avatarEl) {
     document.body.appendChild(panel);
     currentPanel = panel;
 
-    const isMobile = window.matchMedia('(hover: none), (pointer: coarse), (max-width: 768px)').matches;
+    const panelRect = panel.getBoundingClientRect();
+    const isMobile = window.innerWidth <= 768;
 
-    if (!isMobile) {
+    if (isMobile) {
+        // Мобилка: принудительно внизу по центру, через JS (не полагаемся на CSS-медиазапрос)
+        const w = Math.min(window.innerWidth - 20, 420);
+        panel.style.width = `${w}px`;
+        panel.style.minWidth = '0px';
+        panel.style.maxHeight = '70vh';
+        panel.style.overflowY = 'auto';
+        panel.style.left = `${Math.round((window.innerWidth - w) / 2)}px`;
+        panel.style.top = `${Math.round(window.innerHeight - panelRect.height - 12)}px`;
+    } else {
+        // ПК: сбоку от кнопки
         const rect = anchorBtn.getBoundingClientRect();
-        const panelRect = panel.getBoundingClientRect();
         let left = rect.right + 8;
         let top = rect.top;
         if (left + panelRect.width > window.innerWidth - 10) {
@@ -481,6 +491,7 @@ async function openPanel(img, anchorBtn, avatarEl) {
         panel.style.left = `${left}px`;
         panel.style.top = `${top}px`;
     }
+
     // На мобилке позицию задаёт CSS-медиазапрос (bottom по центру) — JS координаты не трогаем
 
 
@@ -508,19 +519,6 @@ async function openPanel(img, anchorBtn, avatarEl) {
 
     closeBtn.addEventListener('click', closePanel);
     doneBtn.addEventListener('click', closePanel);
-    // ВРЕМЕННАЯ ДИАГНОСТИКА
-    setTimeout(() => {
-        const r = panel.getBoundingClientRect();
-        const cs = window.getComputedStyle(panel);
-        toastr.info(
-            `pos:${cs.position} disp:${cs.display} vis:${cs.visibility}<br>` +
-            `op:${cs.opacity} z:${cs.zIndex}<br>` +
-            `L:${Math.round(r.left)} T:${Math.round(r.top)}<br>` +
-            `W:${Math.round(r.width)} H:${Math.round(r.height)}<br>` +
-            `экран: ${window.innerWidth}x${window.innerHeight}`,
-            'ПАНЕЛЬ', { timeOut: 15000, escapeHtml: false }
-        );
-    }, 250);
 
     panelOpenedAt = Date.now();
     document.addEventListener('mousedown', onOutsideClick);
