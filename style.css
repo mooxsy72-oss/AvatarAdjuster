@@ -110,35 +110,61 @@
 }
 
 
-/* ============ Панель редактирования ============ */
-.aa-panel {
+/* ============ Панель редактирования (центрированная модалка) ============ */
+.aa-backdrop {
+    display: none;
     position: fixed;
-    z-index: 10000;
+    inset: 0;
+    z-index: 100000;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: color-mix(in srgb, var(--SmartThemeShadowColor, #000) 65%, transparent);
+    backdrop-filter: blur(4px);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+.aa-backdrop.open {
+    display: flex;
+    animation: aa-fade-in 0.18s ease;
+}
+
+.aa-panel {
+    position: relative;
+    width: min(360px, 94vw);
+    max-height: 88vh;
+    max-height: 88svh;
+    overflow-y: auto;
     background: var(--SmartThemeBlurTintColor, #1a1a1a);
     backdrop-filter: blur(10px);
     border: 1px solid var(--SmartThemeBorderColor, #444);
-    border-radius: 10px;
-    padding: 14px;
-    min-width: 280px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
     color: var(--SmartThemeBodyColor, #eee);
     font-family: var(--mainFontFamily, sans-serif);
     font-size: 13px;
     user-select: none;
-    animation: aa-fade-in 0.18s ease;
+    animation: aa-pop 0.2s cubic-bezier(.34, 1.18, .64, 1);
 }
 
 @keyframes aa-fade-in {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes aa-pop {
+    from { opacity: 0; transform: translateY(14px) scale(.97); }
+    to   { opacity: 1; transform: none; }
 }
 
 .aa-panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
     border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
     font-weight: bold;
     font-size: 13px;
@@ -155,8 +181,8 @@
 
 .aa-panel-close {
     cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
     transition: background 0.15s ease;
     flex-shrink: 0;
 }
@@ -168,8 +194,8 @@
 .aa-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: 10px;
+    margin-bottom: 10px;
 }
 
 .aa-row label {
@@ -182,31 +208,24 @@
     flex: 1;
     accent-color: var(--SmartThemeQuoteColor, #ffb86c);
     cursor: pointer;
-}
-
-.aa-row .aa-value {
-    flex: 0 0 50px;
-    text-align: right;
-    font-size: 12px;
-    opacity: 0.7;
-    font-variant-numeric: tabular-nums;
+    height: 24px;
 }
 
 .aa-panel-actions {
     display: flex;
     gap: 8px;
-    margin-top: 12px;
+    margin-top: 14px;
 }
 
 .aa-btn {
     flex: 1;
-    padding: 6px 10px;
-    border-radius: 6px;
+    padding: 10px 10px;
+    border-radius: 8px;
     border: 1px solid var(--SmartThemeBorderColor, #444);
     background: transparent;
     color: var(--SmartThemeBodyColor, #eee);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 13px;
     transition: all 0.15s ease;
 }
 
@@ -219,36 +238,29 @@
     background: rgba(255, 100, 100, 0.15);
     border-color: #ff6464;
 }
-/* ── Мобильная адаптация панели ── */
+
+/* ── Мобильная адаптация панели: прижимаем к низу, крупные кнопки ── */
 @media (hover: none), (pointer: coarse), (max-width: 768px) {
-    .aa-panel {
-        left: 50% !important;
-        top: auto !important;
-        bottom: 12px !important;
-        transform: translateX(-50%) !important;
-        width: calc(100vw - 20px) !important;
-        min-width: 0 !important;
-        max-width: 420px !important;
-        box-sizing: border-box !important;
-        z-index: 100000 !important;
-        max-height: 70vh !important;
-        overflow-y: auto !important;
-        -webkit-overflow-scrolling: touch !important;
+    .aa-backdrop {
+        align-items: flex-end;
+        padding: 8px;
     }
 
-    .aa-panel-header {
-        position: sticky;
-        top: 0;
-        background: var(--SmartThemeBlurTintColor, #1a1a1a);
-        z-index: 2;
+    .aa-panel {
+        width: 100%;
+        max-width: 480px;
+        margin: 0 auto;
+        max-height: 80vh;
+        max-height: 80svh;
+        padding: 16px 14px calc(16px + env(safe-area-inset-bottom, 0px));
     }
 
     .aa-row input[type="range"] {
-        height: 30px !important;
+        height: 32px !important;
     }
 
     .aa-btn {
-        padding: 12px 12px !important;
+        padding: 14px 12px !important;
         font-size: 15px !important;
     }
 
@@ -257,6 +269,7 @@
         font-size: 18px !important;
     }
 }
+
 .mes > .aa-edit-btn {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
