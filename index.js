@@ -283,101 +283,36 @@ async function applyToAllMatching(key) {
 }
 
 function ensureEditButton(avatarEl) {
-    // Кнопку вешаем НЕ внутрь сообщения (там мешают оверлеи тем),
-    // а в document.body — самый верхний слой. Позицию считаем по аватарке.
-    const wrapper = avatarEl.closest('.mesAvatarWrapper') || avatarEl;
-    if (!wrapper) return;
+    // Ищем родительский .mes — на него вешаем кнопку (у него нет overflow:hidden)
+    const mesEl = avatarEl.closest('.mes');
+    if (!mesEl) return;
+    if (mesEl.querySelector(':scope > .aa-edit-btn')) return;
 
-    // Уже создавали для этой аватарки? Тогда выходим.
-    if (wrapper.dataset.aaBtnLinked === '1') return;
-    wrapper.dataset.aaBtnLinked = '1';
+    const computed = window.getComputedStyle(mesEl);
+    if (computed.position === 'static') {
+        mesEl.style.position = 'relative';
+    }
 
     const btn = document.createElement('div');
-    btn.className = 'aa-edit-btn aa-edit-btn-floating';
+    btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-
-    // Связываем кнопку с её аватаркой (чтобы потом находить пару)
-    btn._aaAvatarEl = avatarEl;
-    btn._aaWrapper = wrapper;
-
-    const handler = (e) => {
+    btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
         e.preventDefault();
         const img = avatarEl.querySelector(':scope > img');
         if (img) openPanel(img, btn, avatarEl);
-    };
-    btn.addEventListener('pointerup', handler);
-    btn.addEventListener('click', handler);
-
-    document.body.appendChild(btn);
-
-    // Запоминаем кнопку, чтобы обновлять её позицию и удалять
-    aaFloatingButtons.push(btn);
-
-    // Сразу поставим на место
-    positionFloatingButton(btn);
+    });
+    mesEl.appendChild(btn);
 }
-
-// Список всех «плавающих» кнопок
-const aaFloatingButtons = [];
-
-// Ставит кнопку в левый верхний угол её аватарки
-function positionFloatingButton(btn) {
-    const wrapper = btn._aaWrapper;
-    // Если аватарка исчезла из DOM — убираем кнопку
-    if (!wrapper || !document.body.contains(wrapper)) {
-        btn.remove();
-        const i = aaFloatingButtons.indexOf(btn);
-        if (i !== -1) aaFloatingButtons.splice(i, 1);
-        return;
-    }
-    const rect = wrapper.getBoundingClientRect();
-    // Если аватарка невидима (0 размер) — прячем кнопку
-    if (rect.width === 0 || rect.height === 0) {
-        btn.style.display = 'none';
-        return;
-    }
-    btn.style.display = 'flex';
-    // 8px отступ от левого верхнего угла аватарки
-    btn.style.left = `${rect.left + 8}px`;
-    btn.style.top = `${rect.top + 8}px`;
-}
-
-// Обновляет позиции всех кнопок (при скролле/ресайзе)
-function updateAllFloatingButtons() {
-    for (let i = aaFloatingButtons.length - 1; i >= 0; i--) {
-        positionFloatingButton(aaFloatingButtons[i]);
-    }
-}
-
 
 
 function processChatAvatars() {
-    const avatars = document.querySelectorAll('#chat .mes .avatar');
-
-    // ВРЕМЕННАЯ ДИАГНОСТИКА — плашка со счётчиком в углу экрана
-    let dbg = document.getElementById('aa-debug-panel');
-    if (!dbg) {
-        dbg = document.createElement('div');
-        dbg.id = 'aa-debug-panel';
-        dbg.style.cssText =
-            'position:fixed;top:4px;right:4px;z-index:2147483647;' +
-            'background:rgba(0,0,0,0.85);color:#0f0;font:12px monospace;' +
-            'padding:6px 8px;border-radius:6px;pointer-events:none;max-width:60vw;';
-        document.body.appendChild(dbg);
-    }
-    const wrappers = document.querySelectorAll('#chat .mes .mesAvatarWrapper');
-    const buttons = document.querySelectorAll('.aa-edit-btn-floating');
-    dbg.textContent =
-        `avatar: ${avatars.length} | wrapper: ${wrappers.length} | btn: ${buttons.length}`;
-
-    avatars.forEach(avatarEl => {
+    document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
         ensureEditButton(avatarEl);
         applyToAvatarEl(avatarEl);
     });
 }
-
 
 // ---- Панель ----
 let currentPanel = null;
@@ -619,57 +554,5 @@ function initObserver() {
 jQuery(async () => {
     initSettings();
     initObserver();
-
-    // Обновляем позиции плавающих кнопок при скролле и ресайзе
-    const scheduleReposition = (() => {
-        let raf = false;
-        return () => {
-            if (raf) return;
-            raf = true;
-            requestAnimationFrame(() => {
-                raf = false;
-                updateAllFloatingButtons();
-            });
-        };
-    })();
-
-    // Скролл внутри чата
-    const chatEl = document.getElementById('chat');
-    if (chatEl) chatEl.addEventListener('scroll', scheduleReposition, { passive: true });
-    // Скролл/ресайз окна
-    window.addEventListener('scroll', scheduleReposition, { passive: true });
-    window.addEventListener('resize', scheduleReposition, { passive: true });
-
-    // Постоянная лёгкая синхронизация (на случай анимаций тем, появления новых сообщений)
-    setInterval(updateAllFloatingButtons, 400);
-
     log('loaded');
 });
-function ensureEditButton(avatarEl) {
-    const wrapper = avatarEl.closest('.mesAvatarWrapper') || avatarEl;
-    if (!wrapper) return;
-
-    if (wrapper.dataset.aaBtnLinked === '1') return;
-    wrapper.dataset.aaBtnLinked = '1';
-
-    const btn = document.createElement('div');
-    btn.className = 'aa-edit-btn aa-edit-btn-floating aa-debug';
-    btn.title = 'Редактировать аватарку';
-    btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-
-    btn._aaAvatarEl = avatarEl;
-    btn._aaWrapper = wrapper;
-
-    const handler = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        const img = avatarEl.querySelector(':scope > img');
-        if (img) openPanel(img, btn, avatarEl);
-    };
-    btn.addEventListener('pointerup', handler);
-    btn.addEventListener('click', handler);
-
-    document.body.appendChild(btn);
-    aaFloatingButtons.push(btn);
-    positionFloatingButton(btn);
-}
