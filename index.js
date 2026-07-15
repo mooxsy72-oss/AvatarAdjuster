@@ -283,22 +283,23 @@ async function applyToAllMatching(key) {
 }
 
 function ensureEditButton(avatarEl) {
-    // Вешаем кнопку на обёртку аватарки (.mesAvatarWrapper),
-    // чтобы она была в одном слое со стеклянными оверлеями темы.
-    // Если обёртки нет — падаем обратно на сам .avatar.
+    // Кнопку вешаем НЕ внутрь сообщения (там мешают оверлеи тем),
+    // а в document.body — самый верхний слой. Позицию считаем по аватарке.
     const wrapper = avatarEl.closest('.mesAvatarWrapper') || avatarEl;
     if (!wrapper) return;
-    if (wrapper.querySelector(':scope > .aa-edit-btn')) return;
 
-    const computed = window.getComputedStyle(wrapper);
-    if (computed.position === 'static') {
-        wrapper.style.position = 'relative';
-    }
+    // Уже создавали для этой аватарки? Тогда выходим.
+    if (wrapper.dataset.aaBtnLinked === '1') return;
+    wrapper.dataset.aaBtnLinked = '1';
 
     const btn = document.createElement('div');
-    btn.className = 'aa-edit-btn';
+    btn.className = 'aa-edit-btn aa-edit-btn-floating';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
+
+    // Связываем кнопку с её аватаркой (чтобы потом находить пару)
+    btn._aaAvatarEl = avatarEl;
+    btn._aaWrapper = wrapper;
 
     const handler = (e) => {
         e.stopPropagation();
@@ -306,12 +307,48 @@ function ensureEditButton(avatarEl) {
         const img = avatarEl.querySelector(':scope > img');
         if (img) openPanel(img, btn, avatarEl);
     };
-    // pointerup — для мыши/тача, click — страховка на случай,
-    // если тема гасит pointer-события
     btn.addEventListener('pointerup', handler);
     btn.addEventListener('click', handler);
 
-    wrapper.appendChild(btn);
+    document.body.appendChild(btn);
+
+    // Запоминаем кнопку, чтобы обновлять её позицию и удалять
+    aaFloatingButtons.push(btn);
+
+    // Сразу поставим на место
+    positionFloatingButton(btn);
+}
+
+// Список всех «плавающих» кнопок
+const aaFloatingButtons = [];
+
+// Ставит кнопку в левый верхний угол её аватарки
+function positionFloatingButton(btn) {
+    const wrapper = btn._aaWrapper;
+    // Если аватарка исчезла из DOM — убираем кнопку
+    if (!wrapper || !document.body.contains(wrapper)) {
+        btn.remove();
+        const i = aaFloatingButtons.indexOf(btn);
+        if (i !== -1) aaFloatingButtons.splice(i, 1);
+        return;
+    }
+    const rect = wrapper.getBoundingClientRect();
+    // Если аватарка невидима (0 размер) — прячем кнопку
+    if (rect.width === 0 || rect.height === 0) {
+        btn.style.display = 'none';
+        return;
+    }
+    btn.style.display = 'flex';
+    // 8px отступ от левого верхнего угла аватарки
+    btn.style.left = `${rect.left + 8}px`;
+    btn.style.top = `${rect.top + 8}px`;
+}
+
+// Обновляет позиции всех кнопок (при скролле/ресайзе)
+function updateAllFloatingButtons() {
+    for (let i = aaFloatingButtons.length - 1; i >= 0; i--) {
+        positionFloatingButton(aaFloatingButtons[i]);
+    }
 }
 
 
@@ -563,5 +600,29 @@ function initObserver() {
 jQuery(async () => {
     initSettings();
     initObserver();
+
+    // Обновляем позиции плавающих кнопок при скролле и ресайзе
+    const scheduleReposition = (() => {
+        let raf = false;
+        return () => {
+            if (raf) return;
+            raf = true;
+            requestAnimationFrame(() => {
+                raf = false;
+                updateAllFloatingButtons();
+            });
+        };
+    })();
+
+    // Скролл внутри чата
+    const chatEl = document.getElementById('chat');
+    if (chatEl) chatEl.addEventListener('scroll', scheduleReposition, { passive: true });
+    // Скролл/ресайз окна
+    window.addEventListener('scroll', scheduleReposition, { passive: true });
+    window.addEventListener('resize', scheduleReposition, { passive: true });
+
+    // Постоянная лёгкая синхронизация (на случай анимаций тем, появления новых сообщений)
+    setInterval(updateAllFloatingButtons, 400);
+
     log('loaded');
 });
