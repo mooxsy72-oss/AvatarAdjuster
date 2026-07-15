@@ -1,5 +1,5 @@
 /* ============ Иконка-шестерёнка ============ */
-.mes .aa-edit-btn {
+.mes > .aa-edit-btn {
     position: absolute;
     top: 8px;
     left: 8px;
@@ -16,41 +16,50 @@
     cursor: pointer;
     opacity: 0.001;
     transition: opacity 0.18s ease;
-    z-index: 999 !important;
-    pointer-events: auto !important;
+    z-index: 99999 !important;
+    pointer-events: auto;
     border: none;
     box-shadow: none;
     backdrop-filter: none;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
 }
 
-.mes .aa-edit-btn:hover {
+.mes > .aa-edit-btn::before {
+    content: "";
+    position: absolute;
+    top: -25px;
+    left: -25px;
+    right: -25px;
+    bottom: -25px;
+    background: transparent;
+    border-radius: 50%;
+    z-index: -1;
+}
+
+.mes > .aa-edit-btn:hover {
     opacity: 1;
     color: var(--SmartThemeQuoteColor, #ffb86c);
 }
 
-/* Мобильная адаптация — крупнее и видно */
+/* ── Мобильная адаптация: показываем шестерёнку по наличию тач-устройства ── */
 @media (hover: none), (pointer: coarse), (max-width: 768px) {
-    .mes .aa-edit-btn {
-        opacity: 0.7 !important;
-        width: 30px !important;
-        height: 30px !important;
-        font-size: 17px !important;
-        background: rgba(0, 0, 0, 0.55) !important;
+    .mes > .aa-edit-btn {
+        opacity: 0.65 !important;
+        width: 24px !important;
+        height: 24px !important;
+        font-size: 16px !important;
+        background: rgba(0, 0, 0, 0.35) !important;
         border-radius: 50% !important;
         backdrop-filter: blur(2px) !important;
-        z-index: 999 !important;
-        pointer-events: auto !important;
     }
-    .mes .aa-edit-btn:active {
+
+    .mes > .aa-edit-btn:hover,
+    .mes > .aa-edit-btn:active {
         opacity: 1 !important;
+        color: var(--SmartThemeQuoteColor, #ffb86c) !important;
     }
 }
 
-.mes .aa-edit-btn {
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-}
 
 /* ============ Оверлей с оригиналом ============ */
 .mes .avatar.aa-has-original {
@@ -248,74 +257,7 @@
         font-size: 18px !important;
     }
 }
-.mes .aa-edit-btn {
+.mes > .aa-edit-btn {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-}
-/* ── Гарантия кликабельности над декоративными слоями тем ── */
-.mesAvatarWrapper > .aa-edit-btn {
-    z-index: 2147483647 !important;
-    pointer-events: auto !important;
-}
-/* На случай если тема ставит pointer-events:none на всю обёртку —
-   возвращаем события самой кнопке */
-.mesAvatarWrapper {
-    pointer-events: auto;
-}
-
-/* ============ Плавающая кнопка (живёт в body, над всеми темами) ============ */
-.aa-edit-btn-floating {
-    position: fixed !important;   /* fixed — координаты от окна, ставит JS */
-    top: 0;                        /* реальные значения задаёт JS */
-    left: 0;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    line-height: 1;
-    cursor: pointer;
-    color: #ffffff;
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(2px);
-    border: none;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
-    opacity: 0.35;
-    transition: opacity 0.18s ease, transform 0.12s ease;
-    z-index: 2147483647 !important;   /* максимально возможный слой */
-    pointer-events: auto !important;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-}
-
-.aa-edit-btn-floating:hover,
-.aa-edit-btn-floating:active {
-    opacity: 1;
-    color: var(--SmartThemeQuoteColor, #ffb86c);
-    transform: scale(1.1);
-}
-
-/* Мобильные / тач-устройства — крупнее и заметнее, чтобы легко попасть пальцем */
-@media (hover: none), (pointer: coarse), (max-width: 768px) {
-    .aa-edit-btn-floating {
-        width: 30px;
-        height: 30px;
-        font-size: 17px;
-        opacity: 0.7;
-        background: rgba(0, 0, 0, 0.55);
-    }
-    .aa-edit-btn-floating:active {
-        opacity: 1;
-    }
-}
-/* ВРЕМЕННАЯ ДИАГНОСТИКА — потом удалить */
-.aa-edit-btn-floating.aa-debug {
-    opacity: 1 !important;
-    background: red !important;
-    width: 34px !important;
-    height: 34px !important;
-    border: 2px solid yellow !important;
 }
