@@ -247,12 +247,22 @@ async function applyToAvatarEl(avatarEl) {
         return;
     }
 
-    // Находим оригинал
-    let originalUrl = originalUrlCache.get(key);
-    if (originalUrl === undefined) {
-        originalUrl = await findWorkingOriginalUrl(key);
+    // Если у текущего src есть маркер подмены галереей (?_agb=) — используем
+    // ИМЕННО этот src как источник, чтобы показать актуальную (новую) картинку,
+    // а не закэшированный браузером оригинал по чистому пути.
+    const hasBust = /[?&]_agb=/.test(src);
+
+    let originalUrl;
+    if (hasBust) {
+        originalUrl = src;
+    } else {
+        originalUrl = originalUrlCache.get(key);
+        if (originalUrl === undefined) {
+            originalUrl = await findWorkingOriginalUrl(key);
+        }
+        if (!originalUrl) originalUrl = src; // fallback на thumbnail
     }
-    if (!originalUrl) originalUrl = src; // fallback на thumbnail
+
 
     // Создаём слой
     const layer = ensureOverlayLayer(avatarEl);
@@ -398,14 +408,22 @@ function makeSliderRow(labelText, prop, state) {
 async function getMinScalePercent(avatarEl, key) {
     if (!avatarEl) return null;
 
-    // Находим URL оригинала
-    let originalUrl = originalUrlCache.get(key);
-    if (originalUrl === undefined) {
-        originalUrl = await findWorkingOriginalUrl(key);
-    }
+    // Находим URL оригинала. Если у текущего <img> есть маркер подмены (?_agb=),
+    // берём актуальный src — иначе рискуем посчитать размеры старой картинки.
     const img = avatarEl.querySelector(':scope > img');
-    if (!originalUrl && img) originalUrl = img.getAttribute('src');
+    const curSrc = img?.getAttribute('src') || '';
+    let originalUrl;
+    if (/[?&]_agb=/.test(curSrc)) {
+        originalUrl = curSrc;
+    } else {
+        originalUrl = originalUrlCache.get(key);
+        if (originalUrl === undefined) {
+            originalUrl = await findWorkingOriginalUrl(key);
+        }
+        if (!originalUrl && curSrc) originalUrl = curSrc;
+    }
     if (!originalUrl) return null;
+
 
     const imgSize = await getImageSize(originalUrl);
     const rect = avatarEl.getBoundingClientRect();
