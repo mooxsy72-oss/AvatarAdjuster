@@ -305,9 +305,15 @@ function ensureEditButton(avatarEl) {
     const openIt = (e) => {
         e.stopPropagation();
         e.preventDefault();
+        if (window.toastr) toastr.info('openIt сработал');
         const img = avatarEl.querySelector(':scope > img');
-        if (img) openPanel(img, btn, avatarEl);
+        if (img) {
+            openPanel(img, btn, avatarEl);
+        } else {
+            if (window.toastr) toastr.warning('img не найден');
+        }
     };
+
 
     btn.addEventListener('touchend', (e) => {
         touchFired = true;
@@ -432,6 +438,7 @@ function buildPanel() {
 }
 
 function closePanel() {
+    if (window.toastr) toastr.error('closePanel вызван');
     const backdrop = currentPanel;
     if (backdrop) {
         backdrop.classList.remove('open');
@@ -484,6 +491,7 @@ async function getMinScalePercent(avatarEl, key) {
 
 async function openPanel(img, anchorBtn, avatarEl) {
     try {
+        if (window.toastr) toastr.success('openPanel вызван');
         const key = getAvatarKey(img.getAttribute('src'));
         if (!key) return;
 
@@ -508,6 +516,7 @@ async function openPanel(img, anchorBtn, avatarEl) {
 
         // Показываем модалку СРАЗУ (до async-операций, чтобы ничего не могло помешать)
         backdrop.classList.add('open');
+        if (window.toastr) toastr.success('панель открыта (класс open добавлен)');
 
         // Подстраиваем минимум масштаба под реальную аватарку (в фоне, не блокирует показ)
         (async () => {
