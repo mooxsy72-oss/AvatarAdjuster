@@ -508,6 +508,19 @@ async function openPanel(img, anchorBtn, avatarEl) {
 
     closeBtn.addEventListener('click', closePanel);
     doneBtn.addEventListener('click', closePanel);
+    // ВРЕМЕННАЯ ДИАГНОСТИКА
+    setTimeout(() => {
+        const r = panel.getBoundingClientRect();
+        const cs = window.getComputedStyle(panel);
+        toastr.info(
+            `pos:${cs.position} disp:${cs.display} vis:${cs.visibility}<br>` +
+            `op:${cs.opacity} z:${cs.zIndex}<br>` +
+            `L:${Math.round(r.left)} T:${Math.round(r.top)}<br>` +
+            `W:${Math.round(r.width)} H:${Math.round(r.height)}<br>` +
+            `экран: ${window.innerWidth}x${window.innerHeight}`,
+            'ПАНЕЛЬ', { timeOut: 15000, escapeHtml: false }
+        );
+    }, 250);
 
     panelOpenedAt = Date.now();
     document.addEventListener('mousedown', onOutsideClick);
