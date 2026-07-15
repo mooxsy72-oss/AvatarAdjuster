@@ -112,10 +112,10 @@
 
 /* ============ Панель редактирования (центрированная модалка) ============ */
 .aa-backdrop {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 100000;
+    display: none !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483647 !important;
     align-items: center;
     justify-content: center;
     padding: 16px;
@@ -123,15 +123,20 @@
     backdrop-filter: blur(4px);
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+    pointer-events: auto !important;
 }
 
 .aa-backdrop.open {
-    display: flex;
+    display: flex !important;
     animation: aa-fade-in 0.18s ease;
 }
 
+
 .aa-panel {
     position: relative;
+    pointer-events: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
     width: min(360px, 94vw);
     max-height: 88vh;
     max-height: 88svh;
