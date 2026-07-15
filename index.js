@@ -283,7 +283,6 @@ async function applyToAllMatching(key) {
 }
 
 function ensureEditButton(avatarEl) {
-    // Ищем родительский .mes — на него вешаем кнопку (у него нет overflow:hidden)
     const mesEl = avatarEl.closest('.mes');
     if (!mesEl) return;
     if (mesEl.querySelector(':scope > .aa-edit-btn')) return;
@@ -297,31 +296,24 @@ function ensureEditButton(avatarEl) {
     btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-    const handleActivate = (e) => {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        e.preventDefault();
+
+    const openIt = (e, evName) => {
+        if (e) { e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault(); }
+        // ВРЕМЕННЫЙ ЛОГ — покажет какое событие сработало
+        if (window.toastr) toastr.info('event: ' + evName, 'AvatarAdjuster');
         const img = avatarEl.querySelector(':scope > img');
         if (img) openPanel(img, btn, avatarEl);
     };
 
-    // touchend в capture-фазе — ловим тап РАНЬШЕ родных обработчиков таверны
-    let touchHandled = false;
-    btn.addEventListener('touchend', (e) => {
-        touchHandled = true;
-        handleActivate(e);
-        // сбрасываем флаг, чтобы последующий синтетический click не дублировал
-        setTimeout(() => { touchHandled = false; }, 500);
-    }, { capture: true, passive: false });
+    // Вешаем ВСЕ возможные события в capture-фазе, чтобы понять что доходит
+    btn.addEventListener('touchstart', (e) => openIt(e, 'touchstart'), { capture: true, passive: false });
+    btn.addEventListener('touchend',   (e) => openIt(e, 'touchend'),   { capture: true, passive: false });
+    btn.addEventListener('pointerup',  (e) => openIt(e, 'pointerup'),  { capture: true });
+    btn.addEventListener('click',      (e) => openIt(e, 'click'),      { capture: true });
 
-    // pointerup — для мыши/ПК (если тач уже обработал — пропускаем)
-    btn.addEventListener('pointerup', (e) => {
-        if (touchHandled) return;
-        if (e.pointerType === 'touch') return; // тач идёт через touchend
-        handleActivate(e);
-    }, { capture: true });
     mesEl.appendChild(btn);
 }
+
 
 
 function processChatAvatars() {
