@@ -293,9 +293,12 @@ async function applyToAvatarEl(avatarEl) {
         saveAvatarSettings(key, settings);
     }
 
-    // Снимаем анимацию — новое сообщение должно встать мгновенно, без прыжка
-    if (!layer.classList.contains('aa-animating')) {
-        layer.style.transition = 'none';
+    // Если это НЕ ручная настройка ползунками — ставим класс мгновенного применения,
+    // чтобы новое сообщение не проигрывало анимацию (особенно важно на мобилке,
+    // где reflow-хак ненадёжен).
+    const animating = layer.classList.contains('aa-animating');
+    if (!animating) {
+        layer.classList.add('aa-instant');
     }
 
     // Трансформации через CSS-переменные на слое
@@ -304,11 +307,6 @@ async function applyToAvatarEl(avatarEl) {
     layer.style.setProperty('--aa-y', `${settings.y}px`);
     layer.style.setProperty('--aa-rotate', `${settings.rotate}deg`);
 
-    // Заставляем браузер применить transform без анимации, затем возвращаем управление классу
-    if (!layer.classList.contains('aa-animating')) {
-        void layer.offsetWidth; // форсим reflow — transform применяется мгновенно
-        layer.style.transition = '';
-    }
 }
 
 
@@ -371,6 +369,7 @@ function closePanel() {
             .forEach(l => l.classList.remove('aa-animating'));
     }
 }
+
 
 
 function onOutsideClick(e) {
@@ -554,12 +553,13 @@ async function openPanel(img, anchorBtn, avatarEl) {
             const val = parseInt(input.value, 10);
             state[prop] = val;
             saveAvatarSettings(key, state);
-            // включаем плавность только на время активной настройки
+            // включаем плавность и снимаем мгновенный режим на время активной настройки
             document.querySelectorAll('#chat .mes .avatar > .aa-original-layer')
-                .forEach(l => l.classList.add('aa-animating'));
+                .forEach(l => { l.classList.remove('aa-instant'); l.classList.add('aa-animating'); });
             await applyToAllMatching(key);
         });
     });
+
 
 
 
