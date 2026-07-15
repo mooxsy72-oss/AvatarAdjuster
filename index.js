@@ -29,6 +29,23 @@ const pendingLookups = new Map();
 // Кэш натуральных размеров картинок: url -> {w, h}
 const imageSizeCache = new Map();
 
+function invalidateCaches(key, currentSrc) {
+    originalUrlCache.delete(key);
+    pendingLookups.delete(key);
+    // Чистим кэш размеров по всем URL, которые могли относиться к этому ключу
+    for (const url of Array.from(imageSizeCache.keys())) {
+        try {
+            const k = getAvatarKey(url);
+            if (k === key) imageSizeCache.delete(url);
+        } catch {}
+    }
+    // Также чистим по «сырому» src (с ?_agb=... от галереи)
+    if (currentSrc) {
+        const clean = currentSrc.split('#')[0];
+        imageSizeCache.delete(clean);
+        imageSizeCache.delete(clean.split('?')[0]);
+    }
+}
 
 function initSettings() {
     if (!extension_settings[MODULE_NAME]) {
@@ -48,12 +65,15 @@ function getAvatarKey(imgSrc) {
         if (type && file) {
             return `${type}:${decodeURIComponent(file)}`;
         }
-        const parts = imgSrc.split('/');
-        return `raw:${parts[parts.length - 1]}`;
+        // fallback: имя файла без query (?_agb= и т.п. от AvatarGallery)
+        const clean = imgSrc.split('#')[0].split('?')[0];
+        const parts = clean.split('/');
+        return `raw:${decodeURIComponent(parts[parts.length - 1])}`;
     } catch (e) {
         return null;
     }
 }
+
 
 function getAvatarSettings(key) {
     if (!key) return { ...DEFAULTS };
@@ -571,11 +591,19 @@ function initObserver() {
             if (m.type === 'attributes' && m.attributeName === 'src') {
                 if (m.target.tagName === 'IMG' && m.target.closest('#chat .mes .avatar')) {
                     const avatarEl = m.target.closest('.avatar');
-                    if (avatarEl) applyToAvatarEl(avatarEl);
+                    if (avatarEl) {
+                        // Картинка сменилась (напр. через AvatarGallery) — чистим кэши
+                        // размеров и оригинала для этого ключа, чтобы пересчитать заново.
+                        const img = avatarEl.querySelector(':scope > img');
+                        const key = img ? getAvatarKey(img.getAttribute('src')) : null;
+                        if (key) invalidateCaches(key, img.getAttribute('src'));
+                        applyToAvatarEl(avatarEl);
+                    }
                 }
             }
         }
     });
+
 
     observer.observe(chat, {
         childList: true,
@@ -587,8 +615,33 @@ function initObserver() {
     processChatAvatars();
 }
 
+
+function reprocessAllAvatars() {
+    document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
+        const img = avatarEl.querySelector(':scope > img');
+        const key = img ? getAvatarKey(img.getAttribute('src')) : null;
+        if (key) invalidateCaches(key, img.getAttribute('src'));
+        applyToAvatarEl(avatarEl);
+    });
+}
+
 jQuery(async () => {
     initSettings();
     initObserver();
+
+    try {
+        const ctx = window.SillyTavern?.getContext?.();
+        const ev = ctx?.eventSource;
+        const et = ctx?.eventTypes ?? ctx?.event_types;
+        if (ev && et) {
+            const handler = () => setTimeout(reprocessAllAvatars, 300);
+            [et.CHAT_CHANGED, et.CHARACTER_SELECTED, et.PERSONA_CHANGED,
+             et.MESSAGE_RECEIVED, et.USER_MESSAGE_RENDERED,
+             et.CHARACTER_MESSAGE_RENDERED].forEach(e => {
+                if (e) { try { ev.on(e, handler); } catch {} }
+            });
+        }
+    } catch {}
+
     log('loaded');
 });
