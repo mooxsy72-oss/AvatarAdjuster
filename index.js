@@ -283,6 +283,7 @@ async function applyToAllMatching(key) {
 }
 
 function ensureEditButton(avatarEl) {
+    // Ищем родительский .mes — на него вешаем кнопку (у него нет overflow:hidden)
     const mesEl = avatarEl.closest('.mes');
     if (!mesEl) return;
     if (mesEl.querySelector(':scope > .aa-edit-btn')) return;
@@ -296,39 +297,14 @@ function ensureEditButton(avatarEl) {
     btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-
-    // Гасим всплытие, чтобы родные обработчики ST не реагировали
-    ['mousedown', 'touchstart', 'pointerdown'].forEach(t =>
-        btn.addEventListener(t, (e) => e.stopPropagation()));
-
-    let touchFired = false;
-    const openIt = (e) => {
+    btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        if (window.toastr) toastr.info('openIt сработал');
         const img = avatarEl.querySelector(':scope > img');
-        if (img) {
-            openPanel(img, btn, avatarEl);
-        } else {
-            if (window.toastr) toastr.warning('img не найден');
-        }
-    };
-
-
-    btn.addEventListener('touchend', (e) => {
-        touchFired = true;
-        openIt(e);
-        setTimeout(() => { touchFired = false; }, 500);
-    }, { passive: false });
-
-    btn.addEventListener('click', (e) => {
-        if (touchFired) return; // на мобилке уже обработали через touchend
-        openIt(e);
+        if (img) openPanel(img, btn, avatarEl);
     });
-
     mesEl.appendChild(btn);
 }
-
 
 
 function processChatAvatars() {
@@ -340,113 +316,26 @@ function processChatAvatars() {
 
 // ---- Панель ----
 let currentPanel = null;
-let panelKey = null;
-let panelState = null;
-let panelAvatarEl = null;
+let panelOpenedAt = 0;
 
-function buildPanel() {
-    if (currentPanel) return currentPanel;
-
-    const backdrop = document.createElement('div');
-    backdrop.className = 'aa-backdrop';
-
-    const panel = document.createElement('div');
-    panel.className = 'aa-panel';
-
-    // Гасим всплытие, чтобы родные обработчики ST не закрывали панель
-    ['mousedown', 'touchstart', 'pointerdown', 'click'].forEach(t =>
-        panel.addEventListener(t, (e) => e.stopPropagation()));
-
-    const header = document.createElement('div');
-    header.className = 'aa-panel-header';
-
-    const title = document.createElement('div');
-    title.className = 'aa-panel-title';
-    title.textContent = 'Аватарка';
-
-    const closeBtn = document.createElement('div');
-    closeBtn.className = 'aa-panel-close';
-    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-
-    header.appendChild(title);
-    header.appendChild(closeBtn);
-    panel.appendChild(header);
-
-    const rowsWrap = document.createElement('div');
-    rowsWrap.className = 'aa-rows';
-    panel.appendChild(rowsWrap);
-
-    const rowsDef = [
-        ['Масштаб', 'scale'],
-        ['Сдвиг X', 'x'],
-        ['Сдвиг Y', 'y'],
-        ['Поворот', 'rotate'],
-    ];
-    rowsDef.forEach(([labelText, prop]) => {
-        rowsWrap.appendChild(makeSliderRow(labelText, prop, DEFAULTS));
-    });
-
-    const actions = document.createElement('div');
-    actions.className = 'aa-panel-actions';
-
-    const resetBtn = document.createElement('button');
-    resetBtn.className = 'aa-btn aa-btn-reset';
-    resetBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> Сбросить';
-
-    const doneBtn = document.createElement('button');
-    doneBtn.className = 'aa-btn aa-btn-done';
-    doneBtn.innerHTML = '<i class="fa-solid fa-check"></i> Готово';
-
-    actions.appendChild(resetBtn);
-    actions.appendChild(doneBtn);
-    panel.appendChild(actions);
-
-    backdrop.appendChild(panel);
-    document.body.appendChild(backdrop);
-
-    // Клик по тёмному фону — закрыть
-    backdrop.addEventListener('click', (e) => {
-        if (e.target === backdrop) closePanel();
-    });
-
-    closeBtn.addEventListener('click', closePanel);
-    doneBtn.addEventListener('click', closePanel);
-
-    // Слушатели ползунков (навешиваем один раз)
-    panel.querySelectorAll('input[type="range"]').forEach(input => {
-        input.addEventListener('input', async () => {
-            if (!panelKey || !panelState) return;
-            const prop = input.dataset.prop;
-            panelState[prop] = parseInt(input.value, 10);
-            saveAvatarSettings(panelKey, panelState);
-            await applyToAllMatching(panelKey);
-        });
-    });
-
-    resetBtn.addEventListener('click', async () => {
-        if (!panelKey || !panelState) return;
-        Object.assign(panelState, DEFAULTS);
-        panel.querySelectorAll('input[type="range"]').forEach(input => {
-            input.value = panelState[input.dataset.prop];
-        });
-        saveAvatarSettings(panelKey, panelState);
-        await applyToAllMatching(panelKey);
-    });
-
-    currentPanel = backdrop;
-    return backdrop;
-}
 
 function closePanel() {
-    if (window.toastr) toastr.error('closePanel вызван');
-    const backdrop = currentPanel;
-    if (backdrop) {
-        backdrop.classList.remove('open');
-        panelKey = null;
-        panelState = null;
-        panelAvatarEl = null;
+    if (currentPanel) {
+        currentPanel.remove();
+        currentPanel = null;
+        document.removeEventListener('mousedown', onOutsideClick);
+        document.removeEventListener('touchstart', onOutsideClick);
     }
 }
+
+function onOutsideClick(e) {
+    if (Date.now() - panelOpenedAt < 400) return;
+    if (currentPanel && !currentPanel.contains(e.target) && !e.target.closest('.aa-edit-btn')) {
+        closePanel();
+    }
+}
+
+
 
 function makeSliderRow(labelText, prop, state) {
     const range = RANGES[prop];
@@ -469,8 +358,12 @@ function makeSliderRow(labelText, prop, state) {
     return row;
 }
 
+// Возвращает минимально допустимый масштаб (в %) для конкретной аватарки,
+// чтобы картинка полностью закрывала контейнер (cover). Если посчитать нельзя — null.
 async function getMinScalePercent(avatarEl, key) {
     if (!avatarEl) return null;
+
+    // Находим URL оригинала
     let originalUrl = originalUrlCache.get(key);
     if (originalUrl === undefined) {
         originalUrl = await findWorkingOriginalUrl(key);
@@ -490,60 +383,137 @@ async function getMinScalePercent(avatarEl, key) {
 }
 
 async function openPanel(img, anchorBtn, avatarEl) {
-    try {
-        if (window.toastr) toastr.success('openPanel вызван');
-        const key = getAvatarKey(img.getAttribute('src'));
-        if (!key) return;
+    closePanel();
+    const key = getAvatarKey(img.getAttribute('src'));
+    if (!key) return;
 
-        buildPanel();
-        const backdrop = currentPanel;
-        const panel = backdrop.querySelector('.aa-panel');
+    // Заранее прогреваем поиск оригинала
+    findWorkingOriginalUrl(key);
 
-        // Прогреваем поиск оригинала
-        findWorkingOriginalUrl(key);
+    const settings = getAvatarSettings(key);
+    const displayName = key.split(':')[1] || key;
 
-        const settings = getAvatarSettings(key);
-        panelKey = key;
-        panelState = { ...settings };
-        panelAvatarEl = avatarEl;
+    const panel = document.createElement('div');
+    panel.className = 'aa-panel';
 
-        // Заполняем ползунки текущими значениями
+    const header = document.createElement('div');
+    header.className = 'aa-panel-header';
+
+    const title = document.createElement('div');
+    title.className = 'aa-panel-title';
+    title.textContent = 'Аватарка';
+    title.title = 'Аватарка';
+
+
+    const closeBtn = document.createElement('div');
+    closeBtn.className = 'aa-panel-close';
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    const state = { ...settings };
+
+    const rows = [
+        ['Масштаб', 'scale'],
+        ['Сдвиг X', 'x'],
+        ['Сдвиг Y', 'y'],
+        ['Поворот', 'rotate'],
+    ];
+
+        rows.forEach(([labelText, prop]) => {
+        panel.appendChild(makeSliderRow(labelText, prop, state));
+    });
+
+    // ── Подстраиваем минимум ползунка "Масштаб" под реальную аватарку ──
+    (async () => {
+        const minScalePercent = await getMinScalePercent(avatarEl, key);
+        if (minScalePercent) {
+            const scaleInput = panel.querySelector('input[data-prop="scale"]');
+            if (scaleInput) {
+                scaleInput.min = minScalePercent;
+                // Если текущее значение ниже минимума — подтягиваем к минимуму
+                if (parseInt(scaleInput.value, 10) < minScalePercent) {
+                    scaleInput.value = minScalePercent;
+                    state.scale = minScalePercent;
+                    saveAvatarSettings(key, state);
+                    await applyToAllMatching(key);
+                }
+            }
+        }
+    })();
+
+
+    const actions = document.createElement('div');
+    actions.className = 'aa-panel-actions';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'aa-btn aa-btn-reset';
+    resetBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> Сбросить';
+
+    const doneBtn = document.createElement('button');
+    doneBtn.className = 'aa-btn aa-btn-done';
+    doneBtn.innerHTML = '<i class="fa-solid fa-check"></i> Готово';
+
+    actions.appendChild(resetBtn);
+    actions.appendChild(doneBtn);
+    panel.appendChild(actions);
+
+    document.body.appendChild(panel);
+    currentPanel = panel;
+
+    const isMobile = window.matchMedia('(hover: none), (pointer: coarse), (max-width: 768px)').matches;
+
+    if (!isMobile) {
+        const rect = anchorBtn.getBoundingClientRect();
+        const panelRect = panel.getBoundingClientRect();
+        let left = rect.right + 8;
+        let top = rect.top;
+        if (left + panelRect.width > window.innerWidth - 10) {
+            left = rect.left - panelRect.width - 8;
+        }
+        if (left < 10) left = 10;
+        if (top + panelRect.height > window.innerHeight - 10) {
+            top = window.innerHeight - panelRect.height - 10;
+        }
+        if (top < 10) top = 10;
+        panel.style.left = `${left}px`;
+        panel.style.top = `${top}px`;
+    }
+    // На мобилке позицию задаёт CSS-медиазапрос (bottom по центру) — JS координаты не трогаем
+
+
+    panel.querySelectorAll('input[type="range"]').forEach(input => {
+        input.addEventListener('input', async () => {
+            const prop = input.dataset.prop;
+            const val = parseInt(input.value, 10);
+            state[prop] = val;
+            saveAvatarSettings(key, state);
+            await applyToAllMatching(key);
+        });
+    });
+
+
+    resetBtn.addEventListener('click', async () => {
+        Object.assign(state, DEFAULTS);
         panel.querySelectorAll('input[type="range"]').forEach(input => {
             const prop = input.dataset.prop;
-            input.min = RANGES[prop].min; // сброс минимума (могли поднять раньше)
-            input.value = panelState[prop];
+            input.value = state[prop];
         });
+        saveAvatarSettings(key, state);
+        await applyToAllMatching(key);
+    });
 
-        // Показываем модалку СРАЗУ (до async-операций, чтобы ничего не могло помешать)
-        backdrop.classList.add('open');
-        if (window.toastr) toastr.success('панель открыта (класс open добавлен)');
 
-        // Подстраиваем минимум масштаба под реальную аватарку (в фоне, не блокирует показ)
-        (async () => {
-            try {
-                const minScalePercent = await getMinScalePercent(avatarEl, key);
-                if (minScalePercent && panelKey === key) {
-                    const scaleInput = panel.querySelector('input[data-prop="scale"]');
-                    if (scaleInput) {
-                        scaleInput.min = minScalePercent;
-                        if (parseInt(scaleInput.value, 10) < minScalePercent) {
-                            scaleInput.value = minScalePercent;
-                            panelState.scale = minScalePercent;
-                            saveAvatarSettings(key, panelState);
-                            await applyToAllMatching(key);
-                        }
-                    }
-                }
-            } catch (e) {
-                log('minScale error', e);
-            }
-        })();
-    } catch (err) {
-        log('openPanel error', err);
-        if (window.toastr) toastr.error('openPanel: ' + (err?.message || err));
-    }
+    closeBtn.addEventListener('click', closePanel);
+    doneBtn.addEventListener('click', closePanel);
+
+    panelOpenedAt = Date.now();
+    document.addEventListener('mousedown', onOutsideClick);
+    document.addEventListener('touchstart', onOutsideClick, { passive: true });
+
 }
-
 
 function initObserver() {
     const chat = document.getElementById('chat');
