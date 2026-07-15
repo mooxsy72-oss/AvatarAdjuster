@@ -1,7 +1,7 @@
 /* ============ Иконка-шестерёнка ============ */
 .mes > .aa-edit-btn {
     position: absolute;
-    top: 8px;
+    top: 34px;
     left: 8px;
     width: 16px;
     height: 16px;
@@ -41,12 +41,11 @@
     color: var(--SmartThemeQuoteColor, #ffb86c);
 }
 
-/* ── Мобильная адаптация: невзрачная шестерёнка по центру слева аватарки ── */
+/* ── Мобильная адаптация ── */
 @media (max-width: 768px) {
     .mes > .aa-edit-btn {
-        top: 25px !important;
+        top: 44px !important;
         left: 6px !important;
-        transform: translateY(-50%) !important;
         opacity: 0.15 !important;
         width: 22px !important;
         height: 22px !important;
@@ -63,7 +62,10 @@
     }
 }
 
-
+.mes > .aa-edit-btn {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
 
 
 /* ============ Оверлей с оригиналом ============ */
