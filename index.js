@@ -283,7 +283,6 @@ async function applyToAllMatching(key) {
 }
 
 function ensureEditButton(avatarEl) {
-    // Ищем родительский .mes — на него вешаем кнопку (у него нет overflow:hidden)
     const mesEl = avatarEl.closest('.mes');
     if (!mesEl) return;
     if (mesEl.querySelector(':scope > .aa-edit-btn')) return;
@@ -297,31 +296,15 @@ function ensureEditButton(avatarEl) {
     btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-
-    let touchHandled = false;
-
-    const openIt = (e) => {
+    btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
         e.preventDefault();
         const img = avatarEl.querySelector(':scope > img');
         if (img) openPanel(img, btn, avatarEl);
-    };
-
-    // Мобилка: touchend срабатывает раньше и не перехватывается оверлеями
-    btn.addEventListener('touchend', (e) => {
-        touchHandled = true;
-        openIt(e);
-        setTimeout(() => { touchHandled = false; }, 500);
-    }, { passive: false });
-
-    // ПК: pointerup (не дублируем, если уже обработали тачем)
-    btn.addEventListener('pointerup', (e) => {
-        if (touchHandled) return;
-        openIt(e);
     });
-
     mesEl.appendChild(btn);
 }
+
 
 
 
