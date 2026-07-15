@@ -283,28 +283,37 @@ async function applyToAllMatching(key) {
 }
 
 function ensureEditButton(avatarEl) {
-    // Ищем родительский .mes — на него вешаем кнопку (у него нет overflow:hidden)
-    const mesEl = avatarEl.closest('.mes');
-    if (!mesEl) return;
-    if (mesEl.querySelector(':scope > .aa-edit-btn')) return;
+    // Вешаем кнопку на обёртку аватарки (.mesAvatarWrapper),
+    // чтобы она была в одном слое со стеклянными оверлеями темы.
+    // Если обёртки нет — падаем обратно на сам .avatar.
+    const wrapper = avatarEl.closest('.mesAvatarWrapper') || avatarEl;
+    if (!wrapper) return;
+    if (wrapper.querySelector(':scope > .aa-edit-btn')) return;
 
-    const computed = window.getComputedStyle(mesEl);
+    const computed = window.getComputedStyle(wrapper);
     if (computed.position === 'static') {
-        mesEl.style.position = 'relative';
+        wrapper.style.position = 'relative';
     }
 
     const btn = document.createElement('div');
     btn.className = 'aa-edit-btn';
     btn.title = 'Редактировать аватарку';
     btn.innerHTML = '<i class="fa-solid fa-gear"></i>';
-    btn.addEventListener('pointerup', (e) => {
+
+    const handler = (e) => {
         e.stopPropagation();
         e.preventDefault();
         const img = avatarEl.querySelector(':scope > img');
         if (img) openPanel(img, btn, avatarEl);
-    });
-    mesEl.appendChild(btn);
+    };
+    // pointerup — для мыши/тача, click — страховка на случай,
+    // если тема гасит pointer-события
+    btn.addEventListener('pointerup', handler);
+    btn.addEventListener('click', handler);
+
+    wrapper.appendChild(btn);
 }
+
 
 
 function processChatAvatars() {
