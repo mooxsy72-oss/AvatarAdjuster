@@ -263,11 +263,22 @@ async function applyToAvatarEl(avatarEl) {
         saveAvatarSettings(key, settings);
     }
 
+    // Снимаем анимацию — новое сообщение должно встать мгновенно, без прыжка
+    if (!layer.classList.contains('aa-animating')) {
+        layer.style.transition = 'none';
+    }
+
     // Трансформации через CSS-переменные на слое
     layer.style.setProperty('--aa-scale', (settings.scale / 100).toString());
     layer.style.setProperty('--aa-x', `${settings.x}px`);
     layer.style.setProperty('--aa-y', `${settings.y}px`);
     layer.style.setProperty('--aa-rotate', `${settings.rotate}deg`);
+
+    // Заставляем браузер применить transform без анимации, затем возвращаем управление классу
+    if (!layer.classList.contains('aa-animating')) {
+        void layer.offsetWidth; // форсим reflow — transform применяется мгновенно
+        layer.style.transition = '';
+    }
 }
 
 
