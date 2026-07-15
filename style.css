@@ -84,8 +84,6 @@
 }
 
 
-/* Наш слой с оригиналом — показываем картинку ЦЕЛИКОМ (contain),
-   чтобы ползунки двигали полное изображение, а не обрезанный кусок */
 .mes .avatar > .aa-original-layer {
     position: absolute;
     top: 0;
@@ -103,7 +101,14 @@
     transition: none;
     pointer-events: none;
     z-index: 1;
+    opacity: 0;
 }
+
+/* Показываем слой только после того, как JS применил финальные координаты */
+.mes .avatar > .aa-original-layer.aa-ready {
+    opacity: 1;
+}
+
 
 .mes .avatar > .aa-original-layer.aa-animating {
     transition: transform 0.15s ease;
