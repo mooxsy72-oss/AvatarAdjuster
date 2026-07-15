@@ -7,7 +7,7 @@
     height: 16px;
     border-radius: 50%;
     background: transparent;
-    color: #ffffff;
+    color: var(--SmartThemeBodyColor, #ffffff);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -47,7 +47,7 @@
         top: 25px !important;
         left: 6px !important;
         transform: translateY(-50%) !important;
-        opacity: 0.28 !important;
+        opacity: 0.15 !important;
         width: 22px !important;
         height: 22px !important;
         font-size: 14px !important;
