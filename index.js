@@ -2,7 +2,7 @@ import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 
 const MODULE_NAME = 'AvatarAdjuster';
-const VERSION = '2.3.0';
+const VERSION = '2.4.0';
 const DEBUG = true;
 
 // Версия схемы настроек. v3: настройки хранятся ПО ТЕМАМ.
@@ -28,21 +28,11 @@ const DEFAULTS = {
     rotate: 0,
 };
 
-// Кэш URL оригиналов: key -> URL или null
-const originalUrlCache = new Map();
-// In-flight запросы, чтобы не дёргать один и тот же URL параллельно
-const pendingLookups = new Map();
-
 // Состояние активного перетаскивания ползунка: { key, settings }.
 // Сохранение отложено до отпускания ползунка (иначе тормозит телефон),
 // поэтому параллельный applyToAvatarEl (новое сообщение, ресайз) должен
 // видеть живые значения, а не устаревшие сохранённые.
 let liveOverride = null;
-
-function invalidateCaches(key) {
-    originalUrlCache.delete(key);
-    pendingLookups.delete(key);
-}
 
 function initSettings() {
     const store = extension_settings[MODULE_NAME] ?? (extension_settings[MODULE_NAME] = {});
@@ -136,124 +126,41 @@ function saveAvatarSettings(key, settings) {
     saveSettingsDebounced();
 }
 
-// Возможные пути к оригиналу
-function getCandidateUrls(type, file) {
-    const encoded = encodeURIComponent(file);
-    if (type === 'avatar') {
-        return [
-            `/characters/${encoded}`,
-            `/User%20Avatars/${encoded}`,
-        ];
-    }
-    if (type === 'persona') {
-        return [
-            `/User%20Avatars/${encoded}`,
-            `/user/avatars/${encoded}`,
-            `/characters/${encoded}`,
-        ];
-    }
-    return [];
-}
-
-// Проверка, что URL реально грузится
-function checkImageLoads(url) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        const timeout = setTimeout(() => resolve(false), 5000);
-        img.onload = () => { clearTimeout(timeout); resolve(true); };
-        img.onerror = () => { clearTimeout(timeout); resolve(false); };
-        img.src = url;
-    });
-}
-
-async function findWorkingOriginalUrl(key) {
-    if (originalUrlCache.has(key)) return originalUrlCache.get(key);
-    if (pendingLookups.has(key)) return pendingLookups.get(key);
-
-    const promise = (async () => {
-        const [type, file] = key.split(':');
-        if (!type || !file) {
-            originalUrlCache.set(key, null);
-            return null;
-        }
-        const candidates = getCandidateUrls(type, file);
-        log(`Searching original for "${key}". Candidates:`, candidates);
-        for (const url of candidates) {
-            const ok = await checkImageLoads(url);
-            log(`  → ${url} : ${ok ? '✅ OK' : '❌ fail'}`);
-            if (ok) {
-                originalUrlCache.set(key, url);
-                pendingLookups.delete(key);
-                return url;
-            }
-        }
-        log(`  ⚠ No working original for "${key}", will use thumbnail`);
-        originalUrlCache.set(key, null);
-        pendingLookups.delete(key);
-        return null;
-    })();
-
-    pendingLookups.set(key, promise);
-    return promise;
-}
-
 // ============================================================
-//  Слой и его геометрия
+//  Геометрия применяется к САМОМУ <img> темы
 // ============================================================
+//
+// Раньше картинка рисовалась в отдельном слое-div, а `img` скрывался. Из-за
+// этого ломались все эффекты и формы, которые темы вешают на
+// `.mes .avatar img`: полупрозрачность, размытие, затемнение, clip-path
+// (сердечки и прочие формы), маски. Теперь мы не подменяем элемент, а
+// настраиваем его же — поэтому всё это продолжает работать само, включая
+// hover-состояния, анимации и псевдоэлементы, которые скопировать было бы
+// нельзя в принципе.
 
-// Слой лежит внутри СВОЕГО клиппера: обрезка не зависит от overflow темы
-// (некоторые темы ставят на .avatar `overflow: visible !important` ради своих
-// декораций, и тогда слой вылезал за пределы контейнера).
-function ensureOverlayLayer(avatarEl) {
-    let clip = avatarEl.querySelector(':scope > .aa-clip');
-    if (!clip) {
-        clip = document.createElement('div');
-        clip.className = 'aa-clip';
-        avatarEl.appendChild(clip);
-    }
-    let layer = clip.querySelector(':scope > .aa-original-layer');
-    if (!layer) {
-        layer = document.createElement('div');
-        layer.className = 'aa-original-layer';
-        clip.appendChild(layer);
-    }
-    return layer;
-}
+// Свойства, которые мы выставляем сами и, значит, обязаны уметь убрать.
+const OWNED_IMG_PROPS = [
+    'width', 'height', 'object-fit', 'object-position',
+    'transform', 'transform-origin',
+];
 
-function getOverlayLayer(avatarEl) {
-    return avatarEl.querySelector(':scope > .aa-clip > .aa-original-layer');
-}
+// Убирает следы расширения: инлайновые стили и слои прошлых версий.
+function clearOwnStyles(avatarEl) {
+    const img = avatarEl.querySelector(':scope > img');
+    if (img) OWNED_IMG_PROPS.forEach(p => img.style.removeProperty(p));
+    avatarEl.style.removeProperty('overflow');
 
-function removeOverlayLayer(avatarEl) {
-    const clip = avatarEl.querySelector(':scope > .aa-clip');
-    if (clip) clip.remove();
-    // слой от старых версий расширения (лежал прямо в .avatar)
-    const legacy = avatarEl.querySelector(':scope > .aa-original-layer');
-    if (legacy) legacy.remove();
+    // DOM от версий 1.x–2.2 (слой + клиппер)
+    avatarEl.querySelector(':scope > .aa-clip')?.remove();
+    avatarEl.querySelector(':scope > .aa-original-layer')?.remove();
     avatarEl.classList.remove('aa-has-original');
-    unsetPositioned(avatarEl);
-}
-
-// Слою нужен спозиционированный родитель. Ставим position ТОЛЬКО если тема
-// оставила элемент статичным: `position: relative !important` в CSS перебивал
-// темы, где .avatar спозиционирован абсолютно.
-function ensurePositioned(avatarEl) {
-    if (window.getComputedStyle(avatarEl).position === 'static') {
-        avatarEl.style.position = 'relative';
-        avatarEl.dataset.aaPositioned = '1';
-    }
-}
-
-function unsetPositioned(avatarEl) {
     if (avatarEl.dataset.aaPositioned === '1') {
         avatarEl.style.removeProperty('position');
         delete avatarEl.dataset.aaPositioned;
     }
 }
 
-// clientWidth/Height = padding-box: ровно та база, от которой считаются 100%
-// у абсолютного слоя. getBoundingClientRect() как основной путь не годится —
-// он включает бордеры И учитывает transform.
+// clientWidth/Height = padding-box, без бордеров и без влияния transform.
 function getContainerSize(el) {
     let w = el.clientWidth;
     let h = el.clientHeight;
@@ -266,8 +173,7 @@ function getContainerSize(el) {
 }
 
 // Во сколько раз надо увеличить повёрнутый прямоугольник, чтобы он всё ещё
-// полностью закрывал контейнер. Зависит ТОЛЬКО от пропорций контейнера —
-// размеры самой картинки не нужны.
+// полностью закрывал контейнер. Зависит только от пропорций контейнера.
 function rotationCoverFactor(deg, size) {
     const r = ((deg % 180) + 180) % 180;
     if (r === 0 || !size) return 1;
@@ -280,97 +186,83 @@ function rotationCoverFactor(deg, size) {
 
 // Единственное место, где значения уезжают в CSS.
 //
-// Модель (никакой асинхронщины и никаких размеров картинки):
-//   • background-size: cover — базовая картинка выглядит ровно так, как её
-//     рисует тема через object-fit: cover. При scale=100 отличий нет вообще.
-//   • Сдвиг = % от ДОСТУПНОГО хода, а не пиксели. Ход складывается из двух
-//     источников, и оба по построению не могут показать пустоту:
-//       – background-position 0…100%: ход по обрезке cover (работает уже на 100%);
-//       – translate ±(s−1)/2: ход, появившийся от зума.
-//     Оба двигают картинку в одну сторону, поэтому один ползунок = один смысл.
-//   • Проценты не зависят от размера контейнера, поэтому смена темы
-//     пересчитывается сама и настройки не приходится трогать.
-function writeTransform(layer, settings, size) {
+// Модель:
+//   • object-fit: cover — картинка заполняет контейнер. Ставится инлайном с
+//     !important, потому что темы часто пишут размеры `img` без !important и
+//     проигрывают стилям ST: контейнер растягивается, а картинка внутри
+//     остаётся мелкой.
+//   • Сдвиг = % от ДОСТУПНОГО хода, а не пиксели, поэтому смена темы или
+//     размера контейнера пересчитывается сама:
+//       – object-position 0…100% — ход по обрезке cover (есть уже на 100%);
+//       – translate ±(s−1)/2    — ход, появившийся от зума.
+//     Оба двигают картинку в одну сторону: один ползунок = один смысл.
+//   • overflow: hidden на контейнере включается ТОЛЬКО при зуме или повороте.
+//     На дефолте тема не трогается, и её декорации, выходящие за границы
+//     аватарки, продолжают рисоваться.
+function applyGeometry(avatarEl, img, settings, size) {
     const userScale = Math.max(1, (settings.scale || 100) / 100);
     const rotate = settings.rotate || 0;
-
     const fx = Math.max(-1, Math.min(1, (settings.x || 0) / 100));
     const fy = Math.max(-1, Math.min(1, (settings.y || 0) / 100));
 
-    // Ход от зума считаем от ПОЛЬЗОВАТЕЛЬСКОГО масштаба: добавка на поворот
-    // остаётся запасом, чтобы угол не вылез в пустоту.
-    const travel = (userScale - 1) * 50;
+    img.style.setProperty('width', '100%', 'important');
+    img.style.setProperty('height', '100%', 'important');
+    img.style.setProperty('object-fit', 'cover', 'important');
+    img.style.setProperty('object-position',
+        `${50 + fx * 50}% ${50 + fy * 50}%`, 'important');
 
-    layer.style.setProperty('--aa-pos-x', `${50 + fx * 50}%`);
-    layer.style.setProperty('--aa-pos-y', `${50 + fy * 50}%`);
-    layer.style.setProperty('--aa-tx', `${-fx * travel}%`);
-    layer.style.setProperty('--aa-ty', `${-fy * travel}%`);
-    layer.style.setProperty('--aa-rotate', `${rotate}deg`);
-    layer.style.setProperty('--aa-scale',
-        (userScale * rotationCoverFactor(rotate, size)).toFixed(4));
+    const travel = (userScale - 1) * 50;
+    const parts = [];
+    if (travel) parts.push(`translate(${-fx * travel}%, ${-fy * travel}%)`);
+    if (rotate) parts.push(`rotate(${rotate}deg)`);
+
+    const scaleEff = userScale * rotationCoverFactor(rotate, size);
+    if (scaleEff !== 1) parts.push(`scale(${scaleEff.toFixed(4)})`);
+
+    if (parts.length) {
+        img.style.setProperty('transform', parts.join(' '), 'important');
+        img.style.setProperty('transform-origin', 'center center', 'important');
+    } else {
+        img.style.removeProperty('transform');
+        img.style.removeProperty('transform-origin');
+    }
+
+    // Обрезка нужна только когда картинка реально выходит за контейнер
+    if (userScale > 1 || rotate) {
+        avatarEl.style.setProperty('overflow', 'hidden', 'important');
+    } else {
+        avatarEl.style.removeProperty('overflow');
+    }
 }
 
-// Применение стилей к элементу .avatar
-async function applyToAvatarEl(avatarEl) {
+// Применение к элементу .avatar
+function applyToAvatarEl(avatarEl) {
     const img = avatarEl.querySelector(':scope > img');
     if (!img) return;
-    const src = img.getAttribute('src');
-    const key = getAvatarKey(src);
+    const key = getAvatarKey(img.getAttribute('src'));
     if (!key) return;
+
+    // Слои от версий 1.x–2.2, если остались в DOM
+    avatarEl.querySelector(':scope > .aa-clip')?.remove();
+    avatarEl.querySelector(':scope > .aa-original-layer')?.remove();
+    avatarEl.classList.remove('aa-has-original');
 
     const isLive = !!(liveOverride && liveOverride.key === key);
     const settings = isLive
         ? { ...DEFAULTS, ...liveOverride.settings }
         : getAvatarSettings(key);
 
-    // Оверлей включён ВСЕГДА, а не только при нестандартных настройках.
-    // Смысл дефолта (100% / 0 / 0 / 0) — «картинка заполняет контейнер по
-    // cover», и это как раз то, что нужно: темы, где `.mes .avatar img`
-    // прописан без !important, проигрывают стилям ST, контейнер растягивается,
-    // а картинка внутри остаётся мелкой. Раньше при дефолтных значениях ключ
-    // удалялся и оверлей снимался — то есть «Сбросить» возвращал сломанный
-    // рендер темы, а не исправный вид.
-    // Если у текущего src есть маркер подмены галереей (?_agb=) — используем
-    // ИМЕННО этот src, чтобы показать актуальную картинку, а не закэшированный
-    // браузером оригинал по чистому пути.
-    let originalUrl;
-    if (/[?&]_agb=/.test(src)) {
-        originalUrl = src;
-    } else {
-        originalUrl = originalUrlCache.get(key);
-        if (originalUrl === undefined) {
-            originalUrl = await findWorkingOriginalUrl(key);
-        }
-        if (!originalUrl) originalUrl = src; // fallback на thumbnail
-    }
-
-    const layer = ensureOverlayLayer(avatarEl);
-    ensurePositioned(avatarEl);
-    avatarEl.classList.add('aa-has-original');
-
-    const desiredBg = `url("${originalUrl}")`;
-    if (layer.style.backgroundImage !== desiredBg) {
-        layer.style.backgroundImage = desiredBg;
-    }
-
-    // Если это НЕ ручная настройка ползунками — применяем мгновенно, чтобы
-    // новое сообщение не проигрывало анимацию.
-    if (!layer.classList.contains('aa-animating')) {
-        layer.classList.add('aa-instant');
-    }
-
-    writeTransform(layer, settings, getContainerSize(avatarEl));
+    applyGeometry(avatarEl, img, settings, getContainerSize(avatarEl));
 }
 
-async function applyToAllMatching(key) {
-    const avatars = document.querySelectorAll('#chat .mes .avatar');
-    for (const avatarEl of avatars) {
+function applyToAllMatching(key) {
+    document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
         const img = avatarEl.querySelector(':scope > img');
-        if (!img) continue;
+        if (!img) return;
         if (getAvatarKey(img.getAttribute('src')) === key) {
-            await applyToAvatarEl(avatarEl);
+            applyToAvatarEl(avatarEl);
         }
-    }
+    });
 }
 
 function ensureEditButton(avatarEl) {
@@ -436,8 +328,8 @@ function processChatAvatars() {
 // То, что делает кнопка «Сбросить», но автоматически: оверлей снимается
 // ПОЛНОСТЬЮ (вместе с классом .aa-has-original и нашим инлайновым position),
 // и только потом применяются настройки новой темы — если они для неё есть.
-function teardownAllOverlays() {
-    document.querySelectorAll('#chat .mes .avatar').forEach(removeOverlayLayer);
+function teardownAllStyles() {
+    document.querySelectorAll('#chat .mes .avatar').forEach(clearOwnStyles);
 }
 
 function applyThemeChange(newThemeId) {
@@ -445,9 +337,9 @@ function applyThemeChange(newThemeId) {
     currentThemeId = newThemeId;
     liveOverride = null;
     closePanel();               // панель принадлежала прошлой теме
-    teardownAllOverlays();      // ← полная разборка, а не пересчёт
+    teardownAllStyles();        // сначала снять своё, потом применить новое
     processChatAvatars();
-    log(`тема сменилась: "${prev}" → "${newThemeId}". Оверлеи сняты, ` +
+    log(`тема сменилась: "${prev}" → "${newThemeId}". Свои стили сняты, ` +
         `применён набор настроек новой темы (${Object.keys(getThemeBucket()).length} шт.)`);
 }
 
@@ -507,26 +399,28 @@ window.AvatarAdjusterDebug = function () {
         const img = el.querySelector(':scope > img');
         const key = img ? getAvatarKey(img.getAttribute('src')) : null;
         const cs = window.getComputedStyle(el);
-        const layer = getOverlayLayer(el);
+        const is = img ? window.getComputedStyle(img) : null;
         const box = (n) => n
             ? `${Math.round(n.getBoundingClientRect().width)}×${Math.round(n.getBoundingClientRect().height)}`
             : '—';
-        const ls = layer ? window.getComputedStyle(layer) : null;
 
         rows.push({
             '#': i,
             key,
-            'контейнер W×H': `${el.clientWidth}×${el.clientHeight}`,
-            'img на экране': box(img),                  // ← вот это и показывает баг темы
+            'контейнер': `${el.clientWidth}×${el.clientHeight}`,
+            'img на экране': box(img),
             'img natural': img ? `${img.naturalWidth}×${img.naturalHeight}` : '—',
-            'img object-fit': img ? window.getComputedStyle(img).objectFit : '—',
-            position: cs.position,
-            overflow: cs.overflow,
-            'маска': (cs.maskImage !== 'none' || cs.webkitMaskImage !== 'none') ? 'да' : 'нет',
-            'слой на экране': box(layer),
-            'bg-size': ls ? ls.backgroundSize : '—',
-            'bg-pos': ls ? ls.backgroundPosition : '—',
-            'transform': ls ? ls.transform : '—',
+            'object-fit': is ? is.objectFit : '—',
+            'object-position': is ? is.objectPosition : '—',
+            'transform': is ? is.transform : '—',
+            // эффекты и формы темы — должны остаться НЕ тронутыми нами
+            'filter': is ? is.filter : '—',
+            'opacity': is ? is.opacity : '—',
+            'clip-path': is ? is.clipPath : '—',
+            'border-radius': is ? is.borderRadius : '—',
+            'маска img': is && (is.maskImage !== 'none' || is.webkitMaskImage !== 'none') ? 'да' : 'нет',
+            'маска .avatar': (cs.maskImage !== 'none' || cs.webkitMaskImage !== 'none') ? 'да' : 'нет',
+            'overflow': cs.overflow,
             'настройки': key
                 ? (hasStoredSettings(key) ? JSON.stringify(getAvatarSettings(key)) : 'дефолт')
                 : '—',
@@ -551,8 +445,6 @@ function closePanel() {
         liveOverride = null;
         document.removeEventListener('mousedown', onOutsideClick);
         document.removeEventListener('touchstart', onOutsideClick);
-        document.querySelectorAll('#chat .mes .avatar .aa-original-layer.aa-animating')
-            .forEach(l => l.classList.remove('aa-animating'));
     }
 }
 
@@ -591,9 +483,6 @@ async function openPanel(img, anchorBtn, avatarEl) {
     closePanel();
     const key = getAvatarKey(img.getAttribute('src'));
     if (!key) return;
-
-    // Заранее прогреваем поиск оригинала
-    findWorkingOriginalUrl(key);
 
     const settings = getAvatarSettings(key);
 
@@ -685,8 +574,7 @@ async function openPanel(img, anchorBtn, avatarEl) {
         document.querySelectorAll('#chat .mes .avatar').forEach(el => {
             const elImg = el.querySelector(':scope > img');
             if (!elImg || getAvatarKey(elImg.getAttribute('src')) !== key) return;
-            const layer = getOverlayLayer(el);
-            if (layer) liveTargets.push({ layer, size: getContainerSize(el) });
+            liveTargets.push({ avatarEl: el, img: elImg, size: getContainerSize(el) });
         });
     }
     collectLiveTargets();
@@ -698,10 +586,8 @@ async function openPanel(img, anchorBtn, avatarEl) {
         if (rafId) return;
         rafId = requestAnimationFrame(() => {
             rafId = 0;
-            liveTargets.forEach(({ layer, size }) => {
-                layer.classList.remove('aa-instant');
-                layer.classList.add('aa-animating');
-                writeTransform(layer, state, size);
+            liveTargets.forEach(({ avatarEl: el, img: elImg, size }) => {
+                applyGeometry(el, elImg, state, size);
             });
         });
     };
@@ -792,10 +678,7 @@ function initObserver() {
                 if (m.target.tagName === 'IMG' && m.target.closest('#chat .mes .avatar')) {
                     const avatarEl = m.target.closest('.avatar');
                     if (avatarEl) {
-                        // Картинка сменилась (напр. через AvatarGallery) — чистим кэш
-                        const curImg = avatarEl.querySelector(':scope > img');
-                        const key = curImg ? getAvatarKey(curImg.getAttribute('src')) : null;
-                        if (key) invalidateCaches(key);
+                        // Картинка сменилась (напр. через AvatarGallery)
                         applyToAvatarEl(avatarEl);
                     }
                 }
@@ -815,9 +698,6 @@ function initObserver() {
 
 function reprocessAllAvatars() {
     document.querySelectorAll('#chat .mes .avatar').forEach(avatarEl => {
-        const img = avatarEl.querySelector(':scope > img');
-        const key = img ? getAvatarKey(img.getAttribute('src')) : null;
-        if (key) invalidateCaches(key);
         applyToAvatarEl(avatarEl);
     });
 }
