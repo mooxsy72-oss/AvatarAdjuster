@@ -68,85 +68,14 @@
 }
 
 
-/* ============ Оверлей с оригиналом ============ */
-/* ВАЖНО: здесь больше НЕ задаются position и overflow.
-   `position: relative !important` перебивал темы, где .avatar спозиционирован
-   абсолютно (аватарка схлопывалась в маленькую или вылезала из контейнера),
-   поэтому position теперь ставится из JS и только если тема оставила элемент
-   статичным. `overflow: hidden !important` проигрывал темам с более
-   специфичным `overflow: visible !important`, поэтому обрезкой занимается
-   наш собственный слой-клиппер .aa-clip ниже. */
-
-/* Скрываем оригинальный img, но сохраняем его в потоке для размеров */
-.mes .avatar.aa-has-original > img {
-    visibility: hidden;
-}
-
-/* Фон специально НЕ задаём: на светлых темах и на темах с CSS-маской
-   захардкоженный #1a1a1a выглядел тёмным прямоугольником. Пустых полей быть
-   не должно — масштаб зажимается до «cover» в JS (clampSettings). */
-
-
-/* Свой клиппер: обрезка не зависит от overflow темы.
-   border-radius: inherit — чтобы круглые/скруглённые аватарки тем
-   продолжали обрезаться по своей форме. */
-.mes .avatar > .aa-clip {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    border-radius: inherit;
-    pointer-events: none;
-    z-index: 1;
-}
-
-/* Наш слой с оригиналом.
-   background-size: cover — базовая картинка выглядит РОВНО так, как её рисует
-   тема через object-fit: cover. Раньше здесь был contain + scale=200% по
-   умолчанию: это совпадает с cover лишь при одном конкретном соотношении
-   сторон, поэтому на других темах аватарка выходила мелкой внутри контейнера.
-
-   Панорамирование идёт двумя согласованными механизмами, ни один из которых
-   не может показать пустоту:
-     • background-position 0…100% — ход по обрезке cover (есть уже на 100%);
-     • translate ±(s−1)/2       — ход, появившийся от зума.
-   Значения считает writeTransform() в index.js. */
-.mes .avatar .aa-clip > .aa-original-layer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-repeat: no-repeat;
-    background-size: cover;
-    background-position: var(--aa-pos-x, 50%) var(--aa-pos-y, 50%);
-    transform-origin: center center;
-    transform:
-        translate(var(--aa-tx, 0%), var(--aa-ty, 0%))
-        rotate(var(--aa-rotate, 0deg))
-        scale(var(--aa-scale, 1));
-    transition: none;
-    pointer-events: none;
-    z-index: 1;
-}
-
-.mes .avatar .aa-original-layer.aa-animating {
-    transition: transform 0.15s ease, background-position 0.15s ease;
-}
-.mes .avatar .aa-original-layer.aa-instant {
-    transition: none !important;
-}
-
-/* Иконка и галерея — над оверлеем (клиппер = z-index: 1).
-   position здесь намеренно не трогаем: .ag-ov принадлежит AvatarGallery,
-   и навязывать ему position — та же ошибка, что была с .avatar. */
-.mes .avatar .aa-edit-btn,
-.mes .avatar .ag-ov {
-    z-index: 2;
-}
-
+/* ============ Аватарка ============ */
+/* Геометрия ставится инлайном на самом <img> темы (см. applyGeometry в
+   index.js), поэтому здесь для аватарки нет НИ ОДНОГО правила.
+   Так и должно быть: все эффекты и формы, которые тема вешает на
+   `.mes .avatar img` — полупрозрачность, размытие, затемнение, clip-path
+   (сердечки и прочие формы), маски, hover-состояния, анимации — остаются
+   на своём элементе и продолжают работать. Прошлые версии рисовали картинку
+   в отдельном слое и скрывали <img>, из-за чего всё это ломалось. */
 
 /* ============ Панель редактирования ============ */
 .aa-panel {
