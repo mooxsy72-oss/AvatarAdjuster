@@ -69,37 +69,62 @@
 
 
 /* ============ Оверлей с оригиналом ============ */
-.mes .avatar.aa-has-original {
-    overflow: hidden !important;
-    position: relative !important;
-}
+/* ВАЖНО: здесь больше НЕ задаются position и overflow.
+   `position: relative !important` перебивал темы, где .avatar спозиционирован
+   абсолютно (аватарка схлопывалась в маленькую или вылезала из контейнера),
+   поэтому position теперь ставится из JS и только если тема оставила элемент
+   статичным. `overflow: hidden !important` проигрывал темам с более
+   специфичным `overflow: visible !important`, поэтому обрезкой занимается
+   наш собственный слой-клиппер .aa-clip ниже. */
 
 /* Скрываем оригинальный img, но сохраняем его в потоке для размеров */
 .mes .avatar.aa-has-original > img {
     visibility: hidden;
 }
 
-/* Тёмный фон под слоем, чтобы пустые поля по бокам (от contain)
-   не выглядели дырами, а смотрелись как рамка */
-.mes .avatar.aa-has-original {
-    background-color: #1a1a1a;
+/* Фон специально НЕ задаём: на светлых темах и на темах с CSS-маской
+   захардкоженный #1a1a1a выглядел тёмным прямоугольником. Пустых полей быть
+   не должно — масштаб зажимается до «cover» в JS (clampSettings). */
+
+
+/* Свой клиппер: обрезка не зависит от overflow темы.
+   border-radius: inherit — чтобы круглые/скруглённые аватарки тем
+   продолжали обрезаться по своей форме. */
+.mes .avatar > .aa-clip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
 }
 
+/* Наш слой с оригиналом.
+   background-size: cover — базовая картинка выглядит РОВНО так, как её рисует
+   тема через object-fit: cover. Раньше здесь был contain + scale=200% по
+   умолчанию: это совпадает с cover лишь при одном конкретном соотношении
+   сторон, поэтому на других темах аватарка выходила мелкой внутри контейнера.
 
-/* Наш слой с оригиналом — показываем картинку ЦЕЛИКОМ (contain),
-   чтобы ползунки двигали полное изображение, а не обрезанный кусок */
-.mes .avatar > .aa-original-layer {
+   Панорамирование идёт двумя согласованными механизмами, ни один из которых
+   не может показать пустоту:
+     • background-position 0…100% — ход по обрезке cover (есть уже на 100%);
+     • translate ±(s−1)/2       — ход, появившийся от зума.
+   Значения считает writeTransform() в index.js. */
+.mes .avatar .aa-clip > .aa-original-layer {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     background-repeat: no-repeat;
-    background-position: center center;
-    background-size: contain;
+    background-size: cover;
+    background-position: var(--aa-pos-x, 50%) var(--aa-pos-y, 50%);
     transform-origin: center center;
     transform:
-        translate(var(--aa-x, 0px), var(--aa-y, 0px))
+        translate(var(--aa-tx, 0%), var(--aa-ty, 0%))
         rotate(var(--aa-rotate, 0deg))
         scale(var(--aa-scale, 1));
     transition: none;
@@ -107,14 +132,16 @@
     z-index: 1;
 }
 
-.mes .avatar > .aa-original-layer.aa-animating {
-    transition: transform 0.15s ease;
+.mes .avatar .aa-original-layer.aa-animating {
+    transition: transform 0.15s ease, background-position 0.15s ease;
 }
-.mes .avatar > .aa-original-layer.aa-instant {
+.mes .avatar .aa-original-layer.aa-instant {
     transition: none !important;
 }
 
-/* Иконка и галерея — над оверлеем */
+/* Иконка и галерея — над оверлеем (клиппер = z-index: 1).
+   position здесь намеренно не трогаем: .ag-ov принадлежит AvatarGallery,
+   и навязывать ему position — та же ошибка, что была с .avatar. */
 .mes .avatar .aa-edit-btn,
 .mes .avatar .ag-ov {
     z-index: 2;
@@ -125,16 +152,21 @@
 .aa-panel {
     position: fixed;
     z-index: 10000;
-    background: var(--SmartThemeBlurTintColor, #1a1a1a);
-    backdrop-filter: blur(10px);
+    /* Полупрозрачность: цвет берётся из темы, альфа добавляется через
+       color-mix. Первая строка — фолбэк для браузеров без color-mix. */
+    background: rgba(20, 20, 24, 0.72);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #14141a) 72%, transparent);
+    backdrop-filter: blur(14px) saturate(1.1);
+    -webkit-backdrop-filter: blur(14px) saturate(1.1);
     border: 1px solid var(--SmartThemeBorderColor, #444);
     border-radius: 10px;
-    padding: 14px;
-    min-width: 280px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    padding: 8px;
+    min-width: 0;
+    width: 220px;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
     color: var(--SmartThemeBodyColor, #eee);
     font-family: var(--mainFontFamily, sans-serif);
-    font-size: 13px;
+    font-size: 12px;
     user-select: none;
     animation: aa-fade-in 0.18s ease;
 }
@@ -143,79 +175,71 @@
     from { opacity: 0; transform: translateY(-6px); }
     to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes aa-fade-in-mobile {
-    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
-    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
 
 .aa-panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
+    margin-bottom: 6px;
+    padding-bottom: 5px;
     border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
-    font-weight: bold;
-    font-size: 13px;
-    gap: 8px;
+    font-size: 12px;
+    gap: 6px;
 }
 
 .aa-panel-title {
     color: var(--SmartThemeQuoteColor, #ffb86c);
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    opacity: 0.8;
+    font-size: 12px;
 }
 
 .aa-panel-close {
     cursor: pointer;
-    padding: 2px 6px;
+    padding: 1px 5px;
     border-radius: 4px;
     transition: background 0.15s ease;
     flex-shrink: 0;
+    opacity: 0.75;
 }
 
 .aa-panel-close:hover {
     background: rgba(255, 255, 255, 0.1);
+    opacity: 1;
 }
 
 .aa-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: 6px;
+    margin-bottom: 4px;
 }
 
-.aa-row label {
-    flex: 0 0 70px;
-    font-size: 12px;
-    opacity: 0.85;
+/* Иконка вместо подписи: узкая колонка вместо прежних 70px текста */
+.aa-row > .aa-icon {
+    flex: 0 0 16px;
+    text-align: center;
+    font-size: 11px;
+    opacity: 0.7;
+    cursor: help;
 }
 
 .aa-row input[type="range"] {
     flex: 1;
+    min-width: 0;
+    height: 16px;
     accent-color: var(--SmartThemeQuoteColor, #ffb86c);
     cursor: pointer;
 }
 
-.aa-row .aa-value {
-    flex: 0 0 50px;
-    text-align: right;
-    font-size: 12px;
-    opacity: 0.7;
-    font-variant-numeric: tabular-nums;
-}
-
 .aa-panel-actions {
     display: flex;
-    gap: 8px;
-    margin-top: 12px;
+    gap: 6px;
+    margin-top: 8px;
 }
 
 .aa-btn {
     flex: 1;
-    padding: 6px 10px;
+    padding: 4px 8px;
     border-radius: 6px;
     border: 1px solid var(--SmartThemeBorderColor, #444);
     background: transparent;
@@ -234,29 +258,34 @@
     background: rgba(255, 100, 100, 0.15);
     border-color: #ff6464;
 }
-/* ── Мобильная адаптация панели ── */
+
+/* ── Мобильная адаптация панели: чуть крупнее зоны нажатия, но без разбухания ── */
 @media (hover: none), (pointer: coarse), (max-width: 768px) {
-    .aa-panel-header {
-        position: sticky;
-        top: 0;
-        background: var(--SmartThemeBlurTintColor, #1a1a1a);
-        z-index: 2;
+    .aa-panel {
+        padding: 10px;
+        font-size: 13px;
+    }
+
+    .aa-row {
+        gap: 8px;
+        margin-bottom: 6px;
     }
 
     .aa-row input[type="range"] {
-        height: 30px !important;
+        height: 24px;
     }
 
     .aa-btn {
-        padding: 12px 12px !important;
-        font-size: 15px !important;
+        padding: 8px 10px;
+        font-size: 14px;
     }
 
     .aa-panel-close {
-        padding: 8px 12px !important;
-        font-size: 18px !important;
+        padding: 4px 9px;
+        font-size: 15px;
     }
 }
+
 .mes > .aa-edit-btn {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
